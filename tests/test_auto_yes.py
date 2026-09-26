@@ -71,7 +71,7 @@ class EssaisAutoYes(unittest.TestCase):
     def verifier_redimensionnement(self, argv):
         t = Terminal(argv)
         try:
-            t.lire(3, b"P$ ")
+            debut = t.lire(5, b"P$ ")
             taille(t.fd, 40, 200)
             os.kill(t.pid, signal.SIGWINCH)
             # le relais passe par stty (un processus) : sur une machine chargée, il tarde
@@ -81,7 +81,9 @@ class EssaisAutoYes(unittest.TestCase):
                 sortie += t.lire(1, b"200:200")
                 if "TAILLE=40 200:200" in sortie:
                     break
-            self.assertIn("TAILLE=40 200:200", sortie)
+            etat = os.waitpid(t.pid, os.WNOHANG)
+            self.assertIn("TAILLE=40 200:200", sortie,
+                          f"début={debut[-200:]!r} état={etat}")
         finally:
             t.fermer()
 
