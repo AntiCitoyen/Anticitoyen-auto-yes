@@ -1,0 +1,56 @@
+#!/usr/bin/expect -f
+# auto-yes-shell : lance le shell de connexion de l'utilisateur, pleinement
+# interactif, et répond automatiquement "1" (Oui) chaque fois qu'un motif de
+# /etc/auto-yes/patterns.conf apparaît dans N'IMPORTE QUELLE commande tapée
+# dans ce terminal — pas besoin de préfixer par "auto-yes".
+#
+# Installé comme commande de démarrage du profil GNOME Terminal par défaut
+# (paquet auto-yes, postinst). AUTO_YES_ACTIVE évite un ré-emballage récursif
+# si ce terminal relance lui-même un terminal ou un sous-shell qui hérite de
+# la même config de profil.
+
+if {[info exists ::env(AUTO_YES_ACTIVE)]} {
+    catch {exec -- $::env(SHELL) -l <@stdin >@stdout 2>@stderr}
+    exit [lindex [wait] 3]
+}
+set ::env(AUTO_YES_ACTIVE) 1
+
+set shell "/bin/bash"
+if {[info exists ::env(SHELL)] && $::env(SHELL) ne ""} { set shell $::env(SHELL) }
+
+set patterns_file "/etc/auto-yes/patterns.conf"
+if {[info exists ::env(AUTO_YES_PATTERNS)]} { set patterns_file $::env(AUTO_YES_PATTERNS) }
+set patterns {}
+if {[file exists $patterns_file]} {
+    set f [open $patterns_file r]
+    while {[gets $f ligne] >= 0} {
+        set ligne [string trim $ligne]
+        if {$ligne eq "" || [string index $ligne 0] eq "#"} { continue }
+        lappend patterns $ligne
+    }
+    close $f
+}
+if {[llength $patterns] == 0} {
+    lappend patterns {(?i)do you want to proceed\??[^\n]*\n\s*1\.}
+}
+
+set actions {}
+foreach p $patterns {
+    lappend actions -o -nobuffer -re $p { send -- "1\r" }
+}
+
+log_user 1
+set timeout -1
+spawn -noecho $shell -l
+
+# Relaie les redimensionnements de la fenêtre au shell (sans quoi bash garde
+# la largeur du démarrage et l'édition des longues lignes se décale).
+trap {
+    set taille [stty size]
+    stty rows [lindex $taille 0] columns [lindex $taille 1] < $spawn_out(slave,name)
+    catch {exec kill -WINCH [exp_pid]}
+} WINCH
+
+eval interact $actions
+
+catch wait

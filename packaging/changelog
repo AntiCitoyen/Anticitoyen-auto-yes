@@ -1,0 +1,31 @@
+auto-yes (1.2-1) stable; urgency=medium
+
+  * auto-yes et auto-yes-shell relaient les redimensionnements de la fenêtre
+    (SIGWINCH) : le shell gardait la largeur du démarrage, et l'édition d'une
+    longue commande rappelée par l'historique se décalait ou disparaissait.
+  * Motif par défaut resserré au vrai menu de confirmation (question puis
+    « 1. » sur la ligne suivante) : la phrase seule ne déclenche plus rien.
+  * Licence MIT, dépôt public, construction par packaging/build-deb.sh.
+
+ -- Anticitoyen <anticitoyen@users.noreply.gitlab.com>  @DATE@
+
+auto-yes (1.1-1) local; urgency=low
+
+  * Réécriture de auto-yes en `spawn`+`interact` (terminal pleinement
+    interactif : Ctrl-C, échos conservés) au lieu du spawn+expect+wait
+    -noecho de la 1.0 qui masquait la frappe.
+  * Ajout de auto-yes-shell : enveloppe le shell de connexion entier, pour
+    répondre automatiquement dans N'IMPORTE QUELLE commande d'un terminal,
+    sans préfixer par "auto-yes".
+  * Motifs externalisés dans /etc/auto-yes/patterns.conf (conffile), relus à
+    chaque terminal, sans reconstruire le paquet.
+  * auto-yes-configurer-gnome-terminal (+ --revert) pour brancher/débrancher
+    auto-yes-shell sur le profil GNOME Terminal par défaut.
+
+ -- Anticitoyen <anticitoyen@users.noreply.gitlab.com>  Sun, 20 Sep 2026 19:21:00 +0200
+
+auto-yes (1.0-1) local; urgency=low
+
+  * Premier jet.
+
+ -- Anticitoyen <anticitoyen@users.noreply.gitlab.com>  Sat, 19 Sep 2026 12:00:00 +0200

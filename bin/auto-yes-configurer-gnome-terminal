@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# À lancer en tant que SOI-MÊME (jamais avec sudo) : bascule le profil GNOME Terminal
+# par défaut sur auto-yes-shell, pour que toute NOUVELLE fenêtre/onglet ouverte depuis
+# le lanceur GNOME Terminal réponde automatiquement aux prompts de /etc/auto-yes/patterns.conf.
+#
+# N'affecte PAS un terminal déjà ouvert, ni les invocations explicites du type
+# `gnome-terminal -- <commande>` (elles imposent leur propre commande, sans passer
+# par le profil), ni les autres émulateurs de terminal (Xephyr, xterm, konsole...).
+#
+# --revert : remet la commande de démarrage précédente du profil (sauvegardée ici).
+set -euo pipefail
+ETAT="$HOME/.config/auto-yes/gnome-terminal-avant.conf"
+
+if [ "${EUID:-$(id -u)}" -eq 0 ]; then
+  echo "Ne pas lancer avec sudo/root : gsettings doit voir VOTRE session (dbus, dconf)." >&2
+  exit 1
+fi
+if ! command -v gsettings >/dev/null || ! command -v gnome-terminal >/dev/null; then
+  echo "gsettings/gnome-terminal absents : rien à configurer ici. Utilisez auto-yes-shell comme commande de démarrage de votre terminal." >&2
+  exit 1
+fi
+
+PROFIL=$(gsettings get org.gnome.Terminal.ProfilesList default | tr -d "'")
+BASE="org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$PROFIL/"
+
+if [ "${1:-}" = "--revert" ]; then
+  if [ -f "$ETAT" ]; then
+    . "$ETAT"
+    gsettings set "$BASE" use-custom-command "$AVANT_USE_CUSTOM"
+    gsettings set "$BASE" custom-command "$AVANT_CUSTOM_COMMAND"
+    rm -f "$ETAT"
+    echo "Profil GNOME Terminal '$PROFIL' restauré (état avant : $AVANT_USE_CUSTOM / $AVANT_CUSTOM_COMMAND)."
+  else
+    gsettings set "$BASE" use-custom-command false
+    echo "Aucun état sauvegardé : commande personnalisée désactivée par défaut."
+  fi
+  exit 0
+fi
+
+mkdir -p "$(dirname "$ETAT")"
+AVANT_USE_CUSTOM=$(gsettings get "$BASE" use-custom-command)
+AVANT_CUSTOM_COMMAND=$(gsettings get "$BASE" custom-command)
+{
+  echo "AVANT_USE_CUSTOM='$AVANT_USE_CUSTOM'"
+  echo "AVANT_CUSTOM_COMMAND='$AVANT_CUSTOM_COMMAND'"
+} > "$ETAT"
+
+gsettings set "$BASE" use-custom-command true
+gsettings set "$BASE" custom-command "/usr/bin/auto-yes-shell"
+
+echo "Profil GNOME Terminal '$PROFIL' configuré : nouvelles fenêtres/onglets → auto-yes-shell."
+echo "Motifs lus dans /etc/auto-yes/patterns.conf (modifiable sans réinstaller)."
+echo "Pour revenir en arrière : auto-yes-configurer-gnome-terminal --revert"

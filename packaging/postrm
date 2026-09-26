@@ -1,0 +1,7 @@
+#!/bin/sh
+set -e
+if [ "$1" = "purge" ] || [ "$1" = "remove" ]; then
+  echo "auto-yes retiré : si vous aviez configuré GNOME Terminal, pensez à lancer"
+  echo "'auto-yes-configurer-gnome-terminal --revert' en tant que vous-même (le paquet ne le fait pas automatiquement, il n'a pas accès à votre session)."
+fi
+exit 0

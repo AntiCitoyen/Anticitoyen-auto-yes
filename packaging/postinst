@@ -1,0 +1,12 @@
+#!/bin/sh
+set -e
+echo ""
+echo "auto-yes installé (/usr/bin/auto-yes, /usr/bin/auto-yes-shell)."
+echo "Motifs : /etc/auto-yes/patterns.conf (un par ligne, relu à chaque terminal)."
+echo ""
+echo "Pour que TOUTE nouvelle fenêtre GNOME Terminal réponde automatiquement,"
+echo "lancez, en tant que vous-même (jamais avec sudo) :"
+echo "    auto-yes-configurer-gnome-terminal"
+echo "(revient en arrière avec : auto-yes-configurer-gnome-terminal --revert)"
+echo ""
+exit 0

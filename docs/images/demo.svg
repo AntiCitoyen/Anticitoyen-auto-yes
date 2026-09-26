@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 300" width="760" height="300" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="15">
+  <rect width="760" height="300" rx="12" fill="#1e1e2e"/>
+  <rect width="760" height="34" rx="12" fill="#313244"/>
+  <rect y="22" width="760" height="12" fill="#313244"/>
+  <circle cx="22" cy="17" r="6" fill="#f38ba8"/>
+  <circle cx="42" cy="17" r="6" fill="#f9e2af"/>
+  <circle cx="62" cy="17" r="6" fill="#a6e3a1"/>
+  <text x="380" y="22" text-anchor="middle" fill="#a6adc8" font-size="13">auto-yes-shell — bash</text>
+  <text x="20" y="70" fill="#a6e3a1">moi@pc<tspan fill="#cdd6f4">:</tspan><tspan fill="#89b4fa">~/projet</tspan><tspan fill="#cdd6f4">$ outil deploy --prod</tspan></text>
+  <text x="20" y="100" fill="#cdd6f4">Preparing 3 files...</text>
+  <text x="20" y="130" fill="#f9e2af">Do you want to proceed?</text>
+  <text x="20" y="155" fill="#cdd6f4">  1. Yes</text>
+  <text x="20" y="180" fill="#cdd6f4">  2. No</text>
+  <text x="20" y="210" fill="#a6e3a1">1</text>
+  <text x="60" y="210" fill="#6c7086">← tapé par auto-yes</text>
+  <text x="20" y="240" fill="#cdd6f4">Done.</text>
+  <text x="20" y="270" fill="#a6e3a1">moi@pc<tspan fill="#cdd6f4">:</tspan><tspan fill="#89b4fa">~/projet</tspan><tspan fill="#cdd6f4">$ █</tspan></text>
+</svg>

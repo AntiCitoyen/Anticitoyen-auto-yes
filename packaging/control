@@ -1,0 +1,26 @@
+Package: auto-yes
+Version: @VERSION@
+Section: utils
+Priority: optional
+Architecture: all
+Maintainer: Anticitoyen <anticitoyen@users.noreply.gitlab.com>
+Installed-Size: @SIZE@
+Depends: expect (>= 5.45)
+Recommends: gnome-terminal
+Homepage: https://github.com/AntiCitoyen/Anticitoyen-auto-yes
+Description: Automatically answers "1" (Yes) to "Do you want to proceed?" prompts
+ Two ways to use it:
+ .
+  - auto-yes <command> [args...] : wrap a single command, fully interactive
+    (Ctrl-C, window resize, your own typing all pass through; the matched
+    prompt is answered automatically).
+  - auto-yes-shell : a drop-in replacement for your login shell that does the
+    same for EVERY command typed in that terminal, with no prefix needed.
+ .
+ The matched prompt(s) live in /etc/auto-yes/patterns.conf, one Tcl regexp per
+ line, re-read on every new terminal (no rebuild needed to add a pattern).
+ .
+ Warning: this silently confirms ANY prompt matching a configured pattern in a
+ wrapped terminal, including from destructive commands (package removal, disk
+ tools) or from another program's own approval prompts. Keep the pattern list
+ narrow.
