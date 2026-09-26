@@ -1,3 +1,18 @@
+auto-yes (1.3-1) stable; urgency=medium
+
+  * Écran calme : la réponse ne part que si rien ne s'affiche 300 ms après le
+    menu (AUTO_YES_CALME) ; une question citée dans un texte qui défile est
+    ignorée au lieu de recevoir un « 1 » parasite.
+  * Journal des réponses (~/.local/state/auto-yes/journal.log) : date, issue,
+    programme au premier plan, texte reconnu ; auto-yes --journal [N].
+  * auto-yes --pause / --reprise / --etat : suspend les réponses dans tous les
+    terminaux, y compris ceux déjà ouverts.
+  * Page de manuel auto-yes(1) ; code commun dans
+    /usr/share/auto-yes/commun.tcl.
+  * Paquets RPM et Arch joints à chaque release.
+
+ -- Anticitoyen <anticitoyen@users.noreply.gitlab.com>  @DATE@
+
 auto-yes (1.2-1) stable; urgency=medium
 
   * auto-yes et auto-yes-shell relaient les redimensionnements de la fenêtre
@@ -7,7 +22,7 @@ auto-yes (1.2-1) stable; urgency=medium
     « 1. » sur la ligne suivante) : la phrase seule ne déclenche plus rien.
   * Licence MIT, dépôt public, construction par packaging/build-deb.sh.
 
- -- Anticitoyen <anticitoyen@users.noreply.gitlab.com>  @DATE@
+ -- Anticitoyen <anticitoyen@users.noreply.gitlab.com>  Sat, 26 Sep 2026 04:20:00 +0200
 
 auto-yes (1.1-1) local; urgency=low
 

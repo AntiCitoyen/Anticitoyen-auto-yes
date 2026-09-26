@@ -47,8 +47,12 @@ Bir Linux terminalinde **auto-yes**, programların ekrana yazdıklarını izler 
 | `auto-yes <komut> [argümanlar…]` | **tek** bir komut başlatır ve onay isteklerini yanıtlar |
 | `auto-yes-shell` | login kabuğunun yerini alır: bu terminalde yazılan **tüm** komutlar önek olmadan bundan yararlanır |
 | `auto-yes-configurer-gnome-terminal` | `auto-yes-shell`'i varsayılan GNOME Terminal profiline bağlar (geri almak için `--revert`) |
+| `auto-yes --pause` / `--reprise` | **tüm** terminallerde, hatta zaten açık olanlarda bile yanıtlamayı askıya alır / geri getirir |
+| `auto-yes --etat` / `--journal [N]` | mevcut durum; kaydedilen son N yanıt |
 
 - **Terminal olduğu gibi kalır**: Expect'in `spawn` + `interact`'i; yazdığınız her şey geçer, yalnızca kalıp bir gönderimi tetikler.
+- **Sessiz ekran**: yanıt yalnızca menüden 300 ms sonra hiçbir şey görüntülenmiyorsa gönderilir; kayan bir metin içinde alıntılanan bir soru yok sayılır.
+- **Günlük**: tanınan her kalıp (tarih, yanıt veya çekimser kalma nedeni, ön plandaki program, metin) `~/.local/state/auto-yes/journal.log` dosyasına kaydedilir.
 - **Yeniden boyutlandırma iletilir**: pencere boyutu değiştiğinde kabuk ve programlar bunu bilir (geçmiş düzenleme, `less`, `vim`, `htop` doğru kalır).
 - **Yeniden kurmadan değiştirilebilir kalıplar**: `/etc/auto-yes/patterns.conf`, her yeni terminalde yeniden okunur.
 - **Çift sarmalama yok**: zaten auto-yes altında çalışan bir terminal başka bir tane başlattığında kendini iki kez sarmalamaz (`AUTO_YES_ACTIVE`).
@@ -65,7 +69,11 @@ Bir Linux terminalinde **auto-yes**, programların ekrana yazdıklarını izler 
 sudo apt install ./auto-yes_*_all.deb
 ```
 
-Tek bağımlılık: `expect` (≥ 5.45).
+Bağımlılıklar: `expect` (≥ 5.45) ve `procps`.
+
+### Fedora, openSUSE… (RPM) ve Arch Linux
+
+Aynı sürüm, `auto-yes-<sürüm>-1.noarch.rpm` (`sudo dnf install ./auto-yes-*.noarch.rpm`), `.src.rpm`, Arch paketini (`sudo pacman -U auto-yes-*.pkg.tar.zst`) ve AUR dosyalarını (`aur-<sürüm>.tar.gz`: `PKGBUILD` ve `.SRCINFO`) sağlar.
 
 ### Kaynak koddan
 
@@ -127,12 +135,23 @@ Soruyu **ve** bir sonraki satırda numaralandırılmış bir menünün `1.` seç
 | Büyük/küçük harfi yok saymak için başa `(?i)` | programlar «Proceed» / «proceed» arasında değişir |
 | `AUTO_YES_PATTERNS=dosya auto-yes …` ile test edin | değişken, bir deneme için `/etc/auto-yes/patterns.conf`'un yerini alır |
 
+### Ortam değişkenleri
+
+| Variable | Rol | Varsayılan |
+|---|---|---|
+| `AUTO_YES_PATTERNS` | kalıp dosyası | `/etc/auto-yes/patterns.conf` |
+| `AUTO_YES_CALME` | menüden sonra gereken sessizlik süresi, milisaniye cinsinden (`0`: anında yanıt) | `300` |
+| `AUTO_YES_JOURNAL` | günlük dosyası (boş: hiçbir şey kaydedilmez) | `~/.local/state/auto-yes/journal.log` |
+| `AUTO_YES_ETAT` | durum klasörü (duraklatma bayrağı) | `~/.local/state/auto-yes` |
+
+Tam yardım: `man auto-yes`.
+
 <a id="fonctionnement"></a>
 
 ## Nasıl çalışır
 
 1. `auto-yes-shell` kalıpları okur, `AUTO_YES_ACTIVE=1` ayarlar, ardından bir sözde uçbirimde (`spawn -noecho`) `$SHELL -l`'i başlatır.
-2. `interact -o -nobuffer -re <kalıp> { send "1\r" }`, terminaliniz ile kabuk arasındaki her şeyi kopyalar; programın çıktısı bir kalıpla eşleştiğinde Expect `1` ve Enter gönderir.
+2. `interact -o -nobuffer -re <kalıp>`, terminaliniz ile kabuk arasındaki her şeyi kopyalar; programın çıktısı bir kalıpla eşleştiğinde auto-yes duraklatmanın etkin olmadığını ve ekranın `AUTO_YES_CALME` ms boyunca sessiz kaldığını doğrular, ardından `1` ve Enter gönderir ve her şeyi günlüğe kaydeder.
 3. Bir `trap … WINCH`, pencere boyutunu (`stty rows/columns`) kabuğun sözde uçbirimine kopyalar ve ona `SIGWINCH` gönderir.
 
 <a id="depannage"></a>
@@ -142,10 +161,11 @@ Soruyu **ve** bir sonraki satırda numaralandırılmış bir menünün `1.` seç
 | Belirti | Neden ve çözüm |
 |---|---|
 | ↑/↓ ile çağrılan bir komutu düzenlerken satır kayıyor veya kayboluyor | sürüm ≤ 1.1: pencere boyutu iletilmiyordu, bash 80 sütunda kalıyordu. 1.2'de düzeltildi; güncellemeden sonra yeni bir terminal açın. `stty size` gerçek boyutu göstermelidir. |
-| Kimse istemediği hâlde bir «1» beliriyor | görüntülenen metin bir kalıpla eşleşiyor (örneğin, alıntılanmış bir onay menüsü gösteren bir program veya bir kalıbın kodunun kendisi). Kalıbı daraltın veya bu programı auto-yes dışında çalıştırın (`AUTO_YES_ACTIVE=1 bash`). |
+| Kimse istemediği hâlde bir «1» beliriyor | görüntülenen metin bir kalıpla eşleşiyor ve ekran bundan sonra sessiz kaldı (sürüm ≤ 1.2: hiç bekleme yoktu). `auto-yes --journal`, hangi programın ve hangi metnin olduğunu gösterir; kalıbı daraltın, `AUTO_YES_CALME`'yi artırın veya işlem süresince `auto-yes --pause` kullanın. |
 | Hiçbir şey yanıtlanmıyor | kalıbı `AUTO_YES_PATTERNS` ile kontrol edin; imleç dizileriyle çizilen bir menü (gerçek satır sonları olmadan) `\n` ile eşleşmez. |
 | Terminal mevcut klasör yerine kökte açılıyor | «GNOME Terminal profili» yöntemi: `~/.bashrc` yöntemine geçin. |
-| Bir oturum için devre dışı bırakma | `AUTO_YES_ACTIVE=1 bash`, auto-yes olmadan bir kabuk açar. |
+| Tanınmasına rağmen gerçek bir menü onaylanmıyor | program görüntülemeye devam ediyor (animasyon, saat): günlük `ignoré:défilement` gösterir. `AUTO_YES_CALME`'yi düşürün veya bu program için `0` yapın. |
+| Her yerde bir süreliğine devre dışı bırakma | `auto-yes --pause` (ardından `--reprise`); veya auto-yes olmayan bir kabuk için `AUTO_YES_ACTIVE=1 bash`. |
 
 <a id="depot"></a>
 
@@ -155,9 +175,11 @@ Soruyu **ve** bir sonraki satırda numaralandırılmış bir menünün `1.` seç
 |---|---|
 | `bin/auto-yes`, `bin/auto-yes-shell` | Expect betikleri |
 | `bin/auto-yes-configurer-gnome-terminal` | GNOME Terminal profiline bağlama |
+| `share/auto-yes/commun.tcl` | ortak kod: kalıplar, sessiz ekran, günlük, duraklatma, pencere boyutu |
+| `man/` | `auto-yes(1)` kılavuz sayfası |
 | `etc/patterns.conf` | birlikte gelen kalıplar (`/etc/auto-yes/patterns.conf`, güncellemelerde korunan yapılandırma dosyası) |
-| `packaging/` | `build-deb.sh`, `control`, `changelog`, `copyright`, paket betikleri |
-| `tests/test_auto_yes.py` | sözde uçbirim testleri: yeniden boyutlandırma, tanınan menü, izole cümle yok sayılır |
+| `packaging/` | `install.sh` (ortak), `build-deb.sh`, `control`, `changelog`, `copyright`, paket betikleri; `rpm/auto-yes.spec`, `aur/PKGBUILD` |
+| `tests/test_auto_yes.py` | sözde uçbirim testleri: yeniden boyutlandırma, tanınan menü, tek başına cümle ve kayan metin yok sayılır, günlük, duraklatma |
 | `docs/readme/` | bu README'nin diğer 18 dildeki hâli |
 
 <a id="deb"></a>
@@ -169,7 +191,7 @@ python3 -m unittest discover -s tests -v   # testler (expect gerekir)
 packaging/build-deb.sh                     # → dist/auto-yes_<sürüm>_all.deb
 ```
 
-Sürüm, `packaging/changelog`'un ilk satırından gelir.
+Sürüm, `packaging/changelog`'un ilk satırından gelir. Yayımlanan her sürümde `.github/workflows/release.yml`, RPM, Arch paketlerini ve AUR dosyalarını oluşturup ekler.
 
 <a id="licence"></a>
 

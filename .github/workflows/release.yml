@@ -1,0 +1,66 @@
+name: Release packages
+
+# When a release is published (with its .deb attached), build the RPM and Arch
+# packages, and attach them with the source RPM and the AUR files.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v1.3)"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  rpm:
+    runs-on: ubuntu-24.04
+    container: fedora:latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: Build RPM and source RPM
+        run: |
+          dnf install -y rpm-build gh
+          V="${TAG#v}"
+          mkdir -p ~/rpmbuild/SOURCES ~/rpmbuild/SPECS
+          # pas de .git dans le conteneur : archive de l'arbre extrait
+          tar --exclude=.git --transform "s,^\.,Anticitoyen-auto-yes-$V," \
+            -czf ~/rpmbuild/SOURCES/Anticitoyen-auto-yes-$V.tar.gz .
+          sed "s/@VERSION@/$V/" packaging/rpm/auto-yes.spec > ~/rpmbuild/SPECS/auto-yes.spec
+          rpmbuild -ba ~/rpmbuild/SPECS/auto-yes.spec
+          gh release upload "$TAG" ~/rpmbuild/RPMS/noarch/*.rpm ~/rpmbuild/SRPMS/*.src.rpm \
+            --clobber --repo "$GITHUB_REPOSITORY"
+
+  arch:
+    runs-on: ubuntu-24.04
+    container: archlinux:latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: Build Arch package and AUR files
+        run: |
+          pacman -Syu --noconfirm base-devel github-cli git
+          V="${TAG#v}"
+          useradd -m builder
+          mkdir -p /home/builder/pkg
+          sed "s/@VERSION@/$V/" packaging/aur/PKGBUILD > /home/builder/pkg/PKGBUILD
+          chown -R builder /home/builder/pkg
+          su builder -c "cd /home/builder/pkg && makepkg --nodeps --noconfirm"
+          # somme de contrôle réelle de l'archive des sources (pour l'AUR), puis .SRCINFO
+          SUM=$(sha256sum /home/builder/pkg/auto-yes-"$V".tar.gz | cut -d' ' -f1)
+          sed -i "s/^sha256sums=('SKIP')/sha256sums=('$SUM')/" /home/builder/pkg/PKGBUILD
+          su builder -c "cd /home/builder/pkg && makepkg --printsrcinfo > .SRCINFO"
+          mkdir -p aur/auto-yes
+          cp /home/builder/pkg/PKGBUILD /home/builder/pkg/.SRCINFO aur/auto-yes/
+          tar -C aur -czf "aur-$V.tar.gz" auto-yes
+          gh release upload "$TAG" /home/builder/pkg/*.pkg.tar.zst "aur-$V.tar.gz" \
+            --clobber --repo "$GITHUB_REPOSITORY"

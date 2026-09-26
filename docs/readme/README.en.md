@@ -47,8 +47,12 @@ In a Linux terminal, **auto-yes** watches what programs display and, as soon as 
 | `auto-yes <command> [arguments…]` | launches **one** command and answers its confirmation prompts |
 | `auto-yes-shell` | replaces the login shell: **every** command typed in this terminal benefits, with no prefix |
 | `auto-yes-configurer-gnome-terminal` | wires `auto-yes-shell` into the default GNOME Terminal profile (`--revert` to undo) |
+| `auto-yes --pause` / `--reprise` | suspends / restores automatic answering in **all** terminals, even ones already open |
+| `auto-yes --etat` / `--journal [N]` | current state; last N logged answers |
 
 - **Terminal left intact**: Expect's `spawn` + `interact`; everything you type passes through, only the pattern triggers a send.
+- **Quiet screen**: the answer is only sent if nothing is displayed 300ms after the menu; a question quoted inside scrolling text is ignored.
+- **Log**: each recognized pattern is logged (date, answer or reason for abstention, foreground program, text) in `~/.local/state/auto-yes/journal.log`.
 - **Resizing relayed**: when the window changes size, the shell and programs know it (history editing, `less`, `vim`, `htop` stay accurate).
 - **Patterns editable without reinstalling**: `/etc/auto-yes/patterns.conf`, reread on each new terminal.
 - **No double wrapping**: a terminal already under auto-yes that relaunches another one doesn't wrap itself twice (`AUTO_YES_ACTIVE`).
@@ -65,7 +69,11 @@ Download the `.deb` from the [latest release](https://github.com/AntiCitoyen/Ant
 sudo apt install ./auto-yes_*_all.deb
 ```
 
-Only dependency: `expect` (≥ 5.45).
+Dependencies: `expect` (≥ 5.45) and `procps`.
+
+### Fedora, openSUSE… (RPM) and Arch Linux
+
+The same release provides `auto-yes-<version>-1.noarch.rpm` (`sudo dnf install ./auto-yes-*.noarch.rpm`), the `.src.rpm`, the Arch package (`sudo pacman -U auto-yes-*.pkg.tar.zst`) and the AUR files (`aur-<version>.tar.gz`: `PKGBUILD` and `.SRCINFO`).
 
 ### From source
 
@@ -127,12 +135,23 @@ It requires the question **and**, on the following line, the `1.` choice of a nu
 | `(?i)` at the start to ignore case | programs vary "Proceed" / "proceed" |
 | Test with `AUTO_YES_PATTERNS=file auto-yes …` | the variable replaces `/etc/auto-yes/patterns.conf` for a trial |
 
+### Environment variables
+
+| Variable | Role | Default |
+|---|---|---|
+| `AUTO_YES_PATTERNS` | patterns file | `/etc/auto-yes/patterns.conf` |
+| `AUTO_YES_CALME` | quiet time required after the menu, in milliseconds (`0`: immediate answer) | `300` |
+| `AUTO_YES_JOURNAL` | log file (empty: nothing logged) | `~/.local/state/auto-yes/journal.log` |
+| `AUTO_YES_ETAT` | state directory (pause flag) | `~/.local/state/auto-yes` |
+
+Full help: `man auto-yes`.
+
 <a id="fonctionnement"></a>
 
 ## How it works
 
 1. `auto-yes-shell` reads the patterns, sets `AUTO_YES_ACTIVE=1`, then launches `$SHELL -l` in a pseudo-terminal (`spawn -noecho`).
-2. `interact -o -nobuffer -re <pattern> { send "1\r" }` copies everything between your terminal and the shell; when the program's output matches a pattern, Expect sends `1` and Enter.
+2. `interact -o -nobuffer -re <motif>` copies everything between your terminal and the shell; when the program's output matches a pattern, auto-yes checks that pause is not active and that the screen has stayed quiet for `AUTO_YES_CALME` ms, then sends `1` and Enter, and logs the whole thing.
 3. A `trap … WINCH` copies the window size (`stty rows/columns`) onto the shell's pseudo-terminal and sends it `SIGWINCH`.
 
 <a id="depannage"></a>
@@ -142,10 +161,11 @@ It requires the question **and**, on the following line, the `1.` choice of a nu
 | Symptom | Cause and fix |
 |---|---|
 | While editing a command recalled with ↑/↓, the line shifts or disappears | versions ≤ 1.1: the window size wasn't relayed, bash stayed at 80 columns. Fixed in 1.2; open a new terminal after updating. `stty size` should show the real size. |
-| A "1" appears when nobody asked for it | the displayed text matches a pattern (for example a program that displays a quoted confirmation menu, or a pattern's own code). Narrow the pattern, or run that program outside auto-yes (`AUTO_YES_ACTIVE=1 bash`). |
+| A "1" appears when nobody asked for it | the displayed text matches a pattern and the screen then stayed quiet (versions ≤ 1.2: no such wait). `auto-yes --journal` shows which program and text; tighten the pattern, increase `AUTO_YES_CALME`, or `auto-yes --pause` for the duration of the operation. |
 | Nothing gets answered | check the pattern with `AUTO_YES_PATTERNS`; a menu drawn with cursor sequences (without real line breaks) doesn't match `\n`. |
 | The terminal opens at root instead of the current folder | "GNOME Terminal profile" method: switch to the `~/.bashrc` method. |
-| Disable for one session | `AUTO_YES_ACTIVE=1 bash` opens a shell without auto-yes. |
+| A real menu isn't confirmed even though it's recognized | the program keeps displaying output (animation, clock): the log shows `ignoré:défilement`. Lower `AUTO_YES_CALME` or set it to `0` for that program. |
+| Disable everywhere for a while | `auto-yes --pause` (then `--reprise`); or `AUTO_YES_ACTIVE=1 bash` for a shell without auto-yes. |
 
 <a id="depot"></a>
 
@@ -155,9 +175,11 @@ It requires the question **and**, on the following line, the `1.` choice of a nu
 |---|---|
 | `bin/auto-yes`, `bin/auto-yes-shell` | Expect scripts |
 | `bin/auto-yes-configurer-gnome-terminal` | wiring into the GNOME Terminal profile |
+| `share/auto-yes/commun.tcl` | common code: patterns, quiet screen, log, pause, window size |
+| `man/` | man page `auto-yes(1)` |
 | `etc/patterns.conf` | shipped patterns (`/etc/auto-yes/patterns.conf`, configuration file preserved across updates) |
-| `packaging/` | `build-deb.sh`, `control`, `changelog`, `copyright`, package scripts |
-| `tests/test_auto_yes.py` | pseudo-terminal tests: resizing, recognized menu, isolated sentence ignored |
+| `packaging/` | `install.sh` (shared), `build-deb.sh`, `control`, `changelog`, `copyright`, packaging scripts; `rpm/auto-yes.spec`, `aur/PKGBUILD` |
+| `tests/test_auto_yes.py` | pseudo-terminal tests: resizing, recognized menu, standalone phrase and scrolling text ignored, log, pause |
 | `docs/readme/` | this README in 18 other languages |
 
 <a id="deb"></a>
@@ -169,7 +191,7 @@ python3 -m unittest discover -s tests -v   # tests (expect required)
 packaging/build-deb.sh                     # → dist/auto-yes_<version>_all.deb
 ```
 
-The version comes from the first line of `packaging/changelog`.
+The version comes from the first line of `packaging/changelog`. On every published release, `.github/workflows/release.yml` builds and attaches the RPM, Arch packages and AUR files.
 
 <a id="licence"></a>
 

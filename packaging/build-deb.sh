@@ -9,10 +9,9 @@ VERSION="$(sed -n '1s/^auto-yes (\([^)]*\)).*/\1/p' "$DEPOT/packaging/changelog"
 ROOT="$DEPOT/build/auto-yes"
 
 rm -rf "$ROOT"
-install -d "$ROOT/usr/bin" "$ROOT/etc/auto-yes" "$ROOT/usr/share/doc/auto-yes" "$ROOT/DEBIAN"
-install -m 755 "$DEPOT"/bin/auto-yes "$DEPOT"/bin/auto-yes-shell \
-    "$DEPOT"/bin/auto-yes-configurer-gnome-terminal "$ROOT/usr/bin/"
-install -m 644 "$DEPOT/etc/patterns.conf" "$ROOT/etc/auto-yes/patterns.conf"
+"$DEPOT/packaging/install.sh" "$ROOT"
+rm -r "$ROOT/usr/share/licenses"  # Debian : la licence est dans copyright
+install -d "$ROOT/usr/share/doc/auto-yes" "$ROOT/DEBIAN"
 install -m 644 "$DEPOT/packaging/copyright" "$ROOT/usr/share/doc/auto-yes/copyright"
 sed "s/@DATE@/$(date -R)/" "$DEPOT/packaging/changelog" | gzip -9n \
     > "$ROOT/usr/share/doc/auto-yes/changelog.Debian.gz"

@@ -47,8 +47,12 @@ Trong một terminal Linux, **auto-yes** theo dõi những gì các chương tr�
 | `auto-yes <lệnh> [tham số…]` | khởi chạy **một** lệnh và trả lời các yêu cầu xác nhận của nó |
 | `auto-yes-shell` | thay thế shell đăng nhập: **tất cả** các lệnh được gõ trong terminal này đều được hưởng lợi, không cần tiền tố |
 | `auto-yes-configurer-gnome-terminal` | kết nối `auto-yes-shell` với hồ sơ mặc định của GNOME Terminal (`--revert` để hoàn tác) |
+| `auto-yes --pause` / `--reprise` | tạm dừng / khôi phục việc trả lời tự động trong **mọi** terminal, kể cả những terminal đã mở sẵn |
+| `auto-yes --etat` / `--journal [N]` | trạng thái hiện tại; N lần trả lời được ghi lại gần nhất |
 
 - **Terminal được giữ nguyên**: `spawn` + `interact` của Expect; mọi thứ bạn gõ đều được truyền qua, chỉ có mẫu mới kích hoạt việc gửi.
+- **Màn hình yên tĩnh**: câu trả lời chỉ được gửi nếu không có gì hiển thị thêm trong 300 ms sau menu; một câu hỏi được trích dẫn trong một đoạn văn bản cuộn qua sẽ bị bỏ qua.
+- **Nhật ký**: mỗi mẫu được nhận diện đều được ghi lại (ngày giờ, câu trả lời hoặc lý do không trả lời, chương trình đang ở nền trước, văn bản) trong `~/.local/state/auto-yes/journal.log`.
 - **Việc thay đổi kích thước được chuyển tiếp**: khi cửa sổ đổi kích thước, shell và các chương trình đều biết điều đó (chỉnh sửa lịch sử, `less`, `vim`, `htop` vẫn chính xác).
 - **Các mẫu có thể sửa mà không cần cài lại**: `/etc/auto-yes/patterns.conf`, được đọc lại mỗi khi mở terminal mới.
 - **Không bọc kép**: một terminal đã chạy dưới auto-yes mà khởi động một terminal khác sẽ không tự bọc mình hai lần (`AUTO_YES_ACTIVE`).
@@ -65,7 +69,11 @@ Tải tệp `.deb` từ [bản phát hành mới nhất](https://github.com/Anti
 sudo apt install ./auto-yes_*_all.deb
 ```
 
-Phụ thuộc duy nhất: `expect` (≥ 5.45).
+Phụ thuộc: `expect` (≥ 5.45) và `procps`.
+
+### Fedora, openSUSE… (RPM) và Arch Linux
+
+Cùng một bản phát hành cung cấp `auto-yes-<version>-1.noarch.rpm` (`sudo dnf install ./auto-yes-*.noarch.rpm`), tệp `.src.rpm`, gói Arch (`sudo pacman -U auto-yes-*.pkg.tar.zst`) và các tệp AUR (`aur-<version>.tar.gz`: `PKGBUILD` và `.SRCINFO`).
 
 ### Từ mã nguồn
 
@@ -127,12 +135,23 @@ Nó đòi hỏi câu hỏi **và**, ở dòng tiếp theo, lựa chọn `1.` c�
 | Đặt `(?i)` ở đầu để bỏ qua chữ hoa/thường | các chương trình dùng khác nhau «Proceed» / «proceed» |
 | Kiểm thử với `AUTO_YES_PATTERNS=tệp auto-yes …` | biến này thay thế `/etc/auto-yes/patterns.conf` để thử nghiệm |
 
+### Các biến môi trường
+
+| Biến | Vai trò | Mặc định |
+|---|---|---|
+| `AUTO_YES_PATTERNS` | tệp mẫu | `/etc/auto-yes/patterns.conf` |
+| `AUTO_YES_CALME` | thời gian yên tĩnh cần thiết sau menu, tính bằng mili giây (`0`: trả lời ngay lập tức) | `300` |
+| `AUTO_YES_JOURNAL` | tệp nhật ký (để trống: không ghi lại gì) | `~/.local/state/auto-yes/journal.log` |
+| `AUTO_YES_ETAT` | thư mục trạng thái (cờ tạm dừng) | `~/.local/state/auto-yes` |
+
+Trợ giúp đầy đủ: `man auto-yes`.
+
 <a id="fonctionnement"></a>
 
 ## Cách hoạt động
 
 1. `auto-yes-shell` đọc các mẫu, đặt `AUTO_YES_ACTIVE=1`, sau đó khởi chạy `$SHELL -l` trong một pseudo-terminal (`spawn -noecho`).
-2. `interact -o -nobuffer -re <mẫu> { send "1\r" }` sao chép mọi thứ giữa terminal của bạn và shell; khi đầu ra của chương trình khớp với một mẫu, Expect gửi `1` và Enter.
+2. `interact -o -nobuffer -re <mẫu>` sao chép mọi thứ giữa terminal của bạn và shell; khi đầu ra của chương trình khớp với một mẫu, auto-yes kiểm tra rằng chế độ tạm dừng không được bật và màn hình vẫn yên tĩnh trong `AUTO_YES_CALME` ms, sau đó gửi `1` và Enter, rồi ghi lại toàn bộ vào nhật ký.
 3. Một `trap … WINCH` sao chép kích thước cửa sổ (`stty rows/columns`) sang pseudo-terminal của shell và gửi cho nó `SIGWINCH`.
 
 <a id="depannage"></a>
@@ -142,10 +161,11 @@ Nó đòi hỏi câu hỏi **và**, ở dòng tiếp theo, lựa chọn `1.` c�
 | Triệu chứng | Nguyên nhân và cách khắc phục |
 |---|---|
 | Khi chỉnh sửa một lệnh được gọi lại bằng ↑/↓, dòng bị lệch hoặc biến mất | các phiên bản ≤ 1.1: kích thước cửa sổ không được chuyển tiếp, bash vẫn ở mức 80 cột. Đã sửa trong 1.2; hãy mở một terminal mới sau khi cập nhật. `stty size` phải hiển thị kích thước thực. |
-| Xuất hiện một «1» dù không ai yêu cầu | văn bản hiển thị khớp với một mẫu (ví dụ một chương trình hiển thị một menu xác nhận được trích dẫn, hoặc mã của chính một mẫu). Hãy thu hẹp mẫu, hoặc chạy chương trình đó bên ngoài auto-yes (`AUTO_YES_ACTIVE=1 bash`). |
+| Xuất hiện một «1» dù không ai yêu cầu | văn bản hiển thị khớp với một mẫu và màn hình sau đó vẫn yên tĩnh (các phiên bản ≤ 1.2: không có thời gian chờ nào). `auto-yes --journal` cho biết chương trình và văn bản nào; hãy thu hẹp mẫu, tăng `AUTO_YES_CALME`, hoặc dùng `auto-yes --pause` trong thời gian thực hiện thao tác. |
 | Không có gì được trả lời | kiểm tra mẫu bằng `AUTO_YES_PATTERNS`; một menu được vẽ bằng các chuỗi con trỏ (không có ký tự xuống dòng thực sự) sẽ không khớp với `\n`. |
 | Terminal mở ở thư mục gốc thay vì thư mục hiện tại | phương pháp «hồ sơ GNOME Terminal»: hãy chuyển sang phương pháp `~/.bashrc`. |
-| Vô hiệu hóa cho một phiên | `AUTO_YES_ACTIVE=1 bash` mở một shell không có auto-yes. |
+| Một menu thật không được xác nhận dù đã được nhận diện | chương trình vẫn tiếp tục hiển thị (hoạt ảnh, đồng hồ): nhật ký ghi `ignoré:défilement`. Hãy giảm `AUTO_YES_CALME` hoặc đặt thành `0` cho chương trình đó. |
+| Vô hiệu hóa mọi nơi trong một khoảng thời gian | `auto-yes --pause` (sau đó `--reprise`); hoặc `AUTO_YES_ACTIVE=1 bash` để mở một shell không có auto-yes. |
 
 <a id="depot"></a>
 
@@ -155,9 +175,11 @@ Nó đòi hỏi câu hỏi **và**, ở dòng tiếp theo, lựa chọn `1.` c�
 |---|---|
 | `bin/auto-yes`, `bin/auto-yes-shell` | các script Expect |
 | `bin/auto-yes-configurer-gnome-terminal` | kết nối với hồ sơ GNOME Terminal |
+| `share/auto-yes/commun.tcl` | mã dùng chung: mẫu, màn hình yên tĩnh, nhật ký, tạm dừng, kích thước cửa sổ |
+| `man/` | trang hướng dẫn `auto-yes(1)` |
 | `etc/patterns.conf` | các mẫu đi kèm (`/etc/auto-yes/patterns.conf`, tệp cấu hình được giữ nguyên qua các bản cập nhật) |
-| `packaging/` | `build-deb.sh`, `control`, `changelog`, `copyright`, các script đóng gói |
-| `tests/test_auto_yes.py` | các bài kiểm thử trong pseudo-terminal: thay đổi kích thước, menu được nhận diện, câu bị cô lập bị bỏ qua |
+| `packaging/` | `install.sh` (dùng chung), `build-deb.sh`, `control`, `changelog`, `copyright`, các script đóng gói; `rpm/auto-yes.spec`, `aur/PKGBUILD` |
+| `tests/test_auto_yes.py` | các bài kiểm thử trong pseudo-terminal: thay đổi kích thước, menu được nhận diện, câu bị cô lập và văn bản cuộn qua bị bỏ qua, nhật ký, tạm dừng |
 | `docs/readme/` | README này bằng 18 ngôn ngữ khác |
 
 <a id="deb"></a>
@@ -169,7 +191,7 @@ python3 -m unittest discover -s tests -v   # kiểm thử (cần expect)
 packaging/build-deb.sh                     # → dist/auto-yes_<phiên bản>_all.deb
 ```
 
-Phiên bản được lấy từ dòng đầu tiên của `packaging/changelog`.
+Phiên bản được lấy từ dòng đầu tiên của `packaging/changelog`. Với mỗi bản phát hành, `.github/workflows/release.yml` xây dựng và đính kèm các gói RPM, Arch và các tệp AUR.
 
 <a id="licence"></a>
 

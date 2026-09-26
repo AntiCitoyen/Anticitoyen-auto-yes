@@ -47,8 +47,12 @@ Linux のターミナルで、**auto-yes** はプログラムが表示する内�
 | `auto-yes <コマンド> [引数…]` | **1つの**コマンドを起動し、その確認プロンプトに答える |
 | `auto-yes-shell` | ログインシェルを置き換える：このターミナルで入力された**すべての**コマンドが、接頭辞なしでその恩恵を受ける |
 | `auto-yes-configurer-gnome-terminal` | `auto-yes-shell` を GNOME Terminal のデフォルトプロファイルに接続する（元に戻すには `--revert`） |
+| `auto-yes --pause` / `--reprise` | すでに開いているものも含め、**すべての**ターミナルで自動応答を一時停止／再開する |
+| `auto-yes --etat` / `--journal [N]` | 現在の状態；記録された直近 N 件の応答 |
 
 - **ターミナルはそのまま**：Expect の `spawn` + `interact`；入力した内容はすべてそのまま通過し、パターンだけが送信の引き金になる。
+- **画面の静止**：メニューの後 300ms の間何も表示されなければ応答が送信される；スクロールするテキストの中に引用された質問は無視される。
+- **ログ**：認識された各パターンは、日付、応答またはその見送りの理由、前面のプログラム、テキストとともに `~/.local/state/auto-yes/journal.log` に記録される。
 - **リサイズが中継される**：ウィンドウのサイズが変わると、シェルとプログラムがそれを認識する（履歴の編集、`less`、`vim`、`htop` は正しく表示され続ける）。
 - **再インストール不要でパターンを変更可能**：`/etc/auto-yes/patterns.conf`、新しいターミナルを開くたびに再読み込みされる。
 - **二重ラップなし**：すでに auto-yes 下で動作しているターミナルが別のターミナルを再起動しても、二重にラップされない（`AUTO_YES_ACTIVE`）。
@@ -65,7 +69,11 @@ Linux のターミナルで、**auto-yes** はプログラムが表示する内�
 sudo apt install ./auto-yes_*_all.deb
 ```
 
-唯一の依存関係：`expect`（≥ 5.45）。
+依存関係：`expect`（≥ 5.45）と `procps`。
+
+### Fedora、openSUSE…（RPM）と Arch Linux
+
+同じリリースには `auto-yes-<version>-1.noarch.rpm`（`sudo dnf install ./auto-yes-*.noarch.rpm`）、`.src.rpm`、Arch パッケージ（`sudo pacman -U auto-yes-*.pkg.tar.zst`）、および AUR ファイル（`aur-<version>.tar.gz`：`PKGBUILD` と `.SRCINFO`）が含まれています。
 
 ### ソースから
 
@@ -127,12 +135,23 @@ auto-yes-configurer-gnome-terminal --revert  # 元に戻す
 | 大文字小文字を無視するために先頭に `(?i)` を付ける | プログラムによって「Proceed」/「proceed」の表記が異なる |
 | `AUTO_YES_PATTERNS=ファイル auto-yes …` でテストする | この変数は、試験のために `/etc/auto-yes/patterns.conf` を置き換える |
 
+### 環境変数
+
+| 変数 | 役割 | 既定値 |
+|---|---|---|
+| `AUTO_YES_PATTERNS` | パターンファイル | `/etc/auto-yes/patterns.conf` |
+| `AUTO_YES_CALME` | メニューの後に必要な静止時間（ミリ秒、`0`：即座に応答） | `300` |
+| `AUTO_YES_JOURNAL` | ログファイル（空：何も記録されない） | `~/.local/state/auto-yes/journal.log` |
+| `AUTO_YES_ETAT` | 状態フォルダ（一時停止フラグ） | `~/.local/state/auto-yes` |
+
+完全なヘルプ：`man auto-yes`。
+
 <a id="fonctionnement"></a>
 
 ## 仕組み
 
 1. `auto-yes-shell` がパターンを読み込み、`AUTO_YES_ACTIVE=1` を設定し、疑似端末（`spawn -noecho`）内で `$SHELL -l` を起動する。
-2. `interact -o -nobuffer -re <パターン> { send "1\r" }` が、あなたのターミナルとシェルの間のすべてをコピーする；プログラムの出力がパターンに一致すると、Expect が `1` と Enter を送信する。
+2. `interact -o -nobuffer -re <パターン>` が、あなたのターミナルとシェルの間のすべてをコピーする；プログラムの出力がパターンに一致すると、auto-yes は一時停止が有効でないこと、そして画面が `AUTO_YES_CALME` ミリ秒間静止していたことを確認したうえで `1` と Enter を送信し、その一部始終をログに記録する。
 3. `trap … WINCH` がウィンドウサイズ（`stty rows/columns`）をシェルの疑似端末にコピーし、`SIGWINCH` を送信する。
 
 <a id="depannage"></a>
@@ -142,10 +161,11 @@ auto-yes-configurer-gnome-terminal --revert  # 元に戻す
 | 症状 | 原因と対処法 |
 |---|---|
 | ↑/↓ で呼び出したコマンドを編集すると、行がずれたり消えたりする | バージョン 1.1 以下：ウィンドウサイズが中継されておらず、bash が 80 列のままだった。1.2 で修正済み；更新後に新しいターミナルを開いてください。`stty size` が実際のサイズを表示するはずです。 |
-| 誰も要求していないのに「1」が現れる | 表示されたテキストがパターンに一致している（例えば、引用された確認メニューを表示するプログラム、またはパターン自体のコード）。パターンを狭めるか、そのプログラムを auto-yes の外で実行してください（`AUTO_YES_ACTIVE=1 bash`）。 |
+| 誰も要求していないのに「1」が現れる | 表示されたテキストがパターンに一致し、その後画面が静止した場合に送信される（バージョン 1.2 以下：待機なし）。`auto-yes --journal` でどのプログラムとテキストかを確認できる；パターンを狭める、`AUTO_YES_CALME` を増やす、またはその操作の間だけ `auto-yes --pause` してください。 |
 | 何も応答されない | `AUTO_YES_PATTERNS` でパターンを確認してください；カーソルシーケンスで描画されたメニュー（実際の改行がないもの）は `\n` に一致しません。 |
 | 現在のフォルダではなくルートでターミナルが開く | 「GNOME Terminal プロファイル」方式：`~/.bashrc` 方式に切り替えてください。 |
-| 1セッションだけ無効にする | `AUTO_YES_ACTIVE=1 bash` は auto-yes なしのシェルを開きます。 |
+| 実際のメニューが認識されているのに確認されない | プログラムが表示を続けている（アニメーション、時計）：ログには `ignoré:défilement` と記録される。`AUTO_YES_CALME` を下げるか、そのプログラムについては `0` に設定してください。 |
+| どこでもしばらく無効にする | `auto-yes --pause`（その後 `--reprise`）；または auto-yes なしのシェルには `AUTO_YES_ACTIVE=1 bash`。 |
 
 <a id="depot"></a>
 
@@ -155,9 +175,11 @@ auto-yes-configurer-gnome-terminal --revert  # 元に戻す
 |---|---|
 | `bin/auto-yes`、`bin/auto-yes-shell` | Expect スクリプト |
 | `bin/auto-yes-configurer-gnome-terminal` | GNOME Terminal プロファイルへの接続 |
+| `share/auto-yes/commun.tcl` | 共通コード：パターン、画面の静止、ログ、一時停止、ウィンドウサイズ |
+| `man/` | `auto-yes(1)` のマニュアルページ |
 | `etc/patterns.conf` | 付属のパターン（`/etc/auto-yes/patterns.conf`、更新時にも保持される設定ファイル） |
-| `packaging/` | `build-deb.sh`、`control`、`changelog`、`copyright`、パッケージスクリプト |
-| `tests/test_auto_yes.py` | 疑似端末でのテスト：リサイズ、メニューの認識、孤立した文の無視 |
+| `packaging/` | `install.sh`（共通）、`build-deb.sh`、`control`、`changelog`、`copyright`、パッケージスクリプト；`rpm/auto-yes.spec`、`aur/PKGBUILD` |
+| `tests/test_auto_yes.py` | 疑似端末でのテスト：リサイズ、メニューの認識、孤立した文とスクロールするテキストの無視、ログ、一時停止 |
 | `docs/readme/` | この README の他18言語版 |
 
 <a id="deb"></a>
@@ -169,7 +191,7 @@ python3 -m unittest discover -s tests -v   # テスト（expect が必要）
 packaging/build-deb.sh                     # → dist/auto-yes_<バージョン>_all.deb
 ```
 
-バージョンは `packaging/changelog` の最初の行から取得されます。
+バージョンは `packaging/changelog` の最初の行から取得されます。各リリースが公開されるたびに、`.github/workflows/release.yml` が RPM、Arch パッケージ、AUR ファイルをビルドして添付します。
 
 <a id="licence"></a>
 

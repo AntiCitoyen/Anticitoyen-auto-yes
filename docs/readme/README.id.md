@@ -47,8 +47,12 @@ Di terminal Linux, **auto-yes** mengamati apa yang ditampilkan program dan, sege
 | `auto-yes <perintah> [argumen…]` | menjalankan **satu** perintah dan menjawab permintaan konfirmasinya |
 | `auto-yes-shell` | menggantikan shell login: **semua** perintah yang diketik di terminal ini mendapatkan manfaat, tanpa awalan |
 | `auto-yes-configurer-gnome-terminal` | menghubungkan `auto-yes-shell` ke profil GNOME Terminal bawaan (`--revert` untuk kembali) |
+| `auto-yes --pause` / `--reprise` | menangguhkan / memulihkan jawaban otomatis di **semua** terminal, bahkan yang sudah terbuka |
+| `auto-yes --etat` / `--journal [N]` | status saat ini; N jawaban terakhir yang tercatat |
 
 - **Terminal tetap utuh**: `spawn` + `interact` dari Expect; semua yang Anda ketik diteruskan, hanya pola yang memicu pengiriman.
+- **Layar tenang**: jawaban hanya dikirim jika tidak ada tampilan baru dalam 300 md setelah menu; pertanyaan yang dikutip dalam teks yang bergulir akan diabaikan.
+- **Log**: setiap pola yang dikenali dicatat (tanggal, jawaban atau alasan tidak menjawab, program di latar depan, teks) di `~/.local/state/auto-yes/journal.log`.
 - **Pengubahan ukuran diteruskan**: saat jendela berubah ukuran, shell dan program mengetahuinya (pengeditan riwayat, `less`, `vim`, `htop` tetap akurat).
 - **Pola dapat diubah tanpa instal ulang**: `/etc/auto-yes/patterns.conf`, dibaca ulang setiap kali terminal baru dibuka.
 - **Tidak ada pembungkusan ganda**: terminal yang sudah berjalan di bawah auto-yes dan menjalankan terminal lain tidak akan membungkus dirinya dua kali (`AUTO_YES_ACTIVE`).
@@ -65,7 +69,11 @@ Unduh `.deb` dari [rilis terbaru](https://github.com/AntiCitoyen/Anticitoyen-aut
 sudo apt install ./auto-yes_*_all.deb
 ```
 
-Satu-satunya dependensi: `expect` (≥ 5.45).
+Dependensi: `expect` (≥ 5.45) dan `procps`.
+
+### Fedora, openSUSE… (RPM) dan Arch Linux
+
+Rilis yang sama menyediakan `auto-yes-<version>-1.noarch.rpm` (`sudo dnf install ./auto-yes-*.noarch.rpm`), berkas `.src.rpm`, paket Arch (`sudo pacman -U auto-yes-*.pkg.tar.zst`) dan berkas AUR (`aur-<version>.tar.gz`: `PKGBUILD` dan `.SRCINFO`).
 
 ### Dari sumber
 
@@ -127,12 +135,23 @@ Pola ini membutuhkan pertanyaan **dan**, pada baris berikutnya, pilihan `1.` dar
 | `(?i)` di awal untuk mengabaikan huruf besar/kecil | program bervariasi antara «Proceed» / «proceed» |
 | Uji dengan `AUTO_YES_PATTERNS=berkas auto-yes …` | variabel ini menggantikan `/etc/auto-yes/patterns.conf` untuk sebuah percobaan |
 
+### Variabel lingkungan
+
+| Variabel | Peran | Bawaan |
+|---|---|---|
+| `AUTO_YES_PATTERNS` | berkas pola | `/etc/auto-yes/patterns.conf` |
+| `AUTO_YES_CALME` | keheningan yang dibutuhkan setelah menu, dalam milidetik (`0`: jawaban langsung) | `300` |
+| `AUTO_YES_JOURNAL` | berkas log (kosong: tidak ada yang dicatat) | `~/.local/state/auto-yes/journal.log` |
+| `AUTO_YES_ETAT` | folder status (penanda jeda) | `~/.local/state/auto-yes` |
+
+Bantuan lengkap: `man auto-yes`.
+
 <a id="fonctionnement"></a>
 
 ## Cara kerjanya
 
 1. `auto-yes-shell` membaca pola, menetapkan `AUTO_YES_ACTIVE=1`, lalu menjalankan `$SHELL -l` dalam pseudo-terminal (`spawn -noecho`).
-2. `interact -o -nobuffer -re <pola> { send "1\r" }` menyalin semua yang terjadi antara terminal Anda dan shell; ketika keluaran program cocok dengan sebuah pola, Expect mengirimkan `1` dan Enter.
+2. `interact -o -nobuffer -re <pola>` menyalin semua yang terjadi antara terminal Anda dan shell; ketika keluaran program cocok dengan sebuah pola, auto-yes memeriksa bahwa jeda tidak aktif dan layar tetap tenang selama `AUTO_YES_CALME` md, lalu mengirimkan `1` dan Enter, serta mencatat semuanya ke log.
 3. `trap … WINCH` menyalin ukuran jendela (`stty rows/columns`) ke pseudo-terminal shell dan mengirimkan `SIGWINCH` kepadanya.
 
 <a id="depannage"></a>
@@ -142,10 +161,11 @@ Pola ini membutuhkan pertanyaan **dan**, pada baris berikutnya, pilihan `1.` dar
 | Gejala | Penyebab dan solusi |
 |---|---|
 | Saat mengedit perintah yang dipanggil kembali dengan ↑/↓, baris bergeser atau menghilang | versi ≤ 1.1: ukuran jendela tidak diteruskan, bash tetap pada 80 kolom. Diperbaiki di 1.2; buka terminal baru setelah pembaruan. `stty size` seharusnya menampilkan ukuran sebenarnya. |
-| Sebuah «1» muncul padahal tidak ada yang memintanya | teks yang ditampilkan cocok dengan sebuah pola (misalnya program yang menampilkan menu konfirmasi yang dikutip, atau kode dari pola itu sendiri). Persempit polanya, atau jalankan program tersebut di luar auto-yes (`AUTO_YES_ACTIVE=1 bash`). |
+| Sebuah «1» muncul padahal tidak ada yang memintanya | teks yang ditampilkan cocok dengan sebuah pola dan layar tetap tenang sesudahnya (versi ≤ 1.2: tidak ada jeda tunggu). `auto-yes --journal` menunjukkan program dan teks yang mana; persempit polanya, naikkan `AUTO_YES_CALME`, atau gunakan `auto-yes --pause` selama operasi berlangsung. |
 | Tidak ada yang dijawab | periksa pola dengan `AUTO_YES_PATTERNS`; menu yang digambar dengan urutan kursor (tanpa jeda baris sungguhan) tidak cocok dengan `\n`. |
 | Terminal terbuka di direktori root, bukan folder saat ini | metode «profil GNOME Terminal»: beralihlah ke metode `~/.bashrc`. |
-| Menonaktifkan untuk satu sesi | `AUTO_YES_ACTIVE=1 bash` membuka shell tanpa auto-yes. |
+| Menu asli tidak dikonfirmasi padahal sudah dikenali | program terus menampilkan sesuatu (animasi, jam): log menunjukkan `ignoré:défilement`. Turunkan `AUTO_YES_CALME` atau atur ke `0` untuk program tersebut. |
+| Menonaktifkan di mana pun untuk sementara waktu | `auto-yes --pause` (lalu `--reprise`); atau `AUTO_YES_ACTIVE=1 bash` untuk shell tanpa auto-yes. |
 
 <a id="depot"></a>
 
@@ -155,9 +175,11 @@ Pola ini membutuhkan pertanyaan **dan**, pada baris berikutnya, pilihan `1.` dar
 |---|---|
 | `bin/auto-yes`, `bin/auto-yes-shell` | skrip Expect |
 | `bin/auto-yes-configurer-gnome-terminal` | penghubung ke profil GNOME Terminal |
+| `share/auto-yes/commun.tcl` | kode bersama: pola, layar tenang, log, jeda, ukuran jendela |
+| `man/` | halaman manual `auto-yes(1)` |
 | `etc/patterns.conf` | pola bawaan (`/etc/auto-yes/patterns.conf`, berkas konfigurasi tetap dipertahankan saat pembaruan) |
-| `packaging/` | `build-deb.sh`, `control`, `changelog`, `copyright`, skrip paket |
-| `tests/test_auto_yes.py` | pengujian dalam pseudo-terminal: pengubahan ukuran, menu yang dikenali, kalimat berdiri sendiri diabaikan |
+| `packaging/` | `install.sh` (bersama), `build-deb.sh`, `control`, `changelog`, `copyright`, skrip paket; `rpm/auto-yes.spec`, `aur/PKGBUILD` |
+| `tests/test_auto_yes.py` | pengujian dalam pseudo-terminal: pengubahan ukuran, menu yang dikenali, kalimat berdiri sendiri dan teks yang bergulir diabaikan, log, jeda |
 | `docs/readme/` | README ini dalam 18 bahasa lainnya |
 
 <a id="deb"></a>
@@ -169,7 +191,7 @@ python3 -m unittest discover -s tests -v   # pengujian (memerlukan expect)
 packaging/build-deb.sh                     # → dist/auto-yes_<versi>_all.deb
 ```
 
-Versi diambil dari baris pertama `packaging/changelog`.
+Versi diambil dari baris pertama `packaging/changelog`. Pada setiap rilis yang dipublikasikan, `.github/workflows/release.yml` membangun dan melampirkan paket RPM, Arch dan berkas AUR.
 
 <a id="licence"></a>
 

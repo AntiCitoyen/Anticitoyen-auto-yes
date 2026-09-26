@@ -9,6 +9,7 @@ import select
 import shutil
 import signal
 import struct
+import subprocess
 import tempfile
 import termios
 import time
@@ -94,12 +95,23 @@ class EssaisAutoYes(unittest.TestCase):
         self.verifier_redimensionnement(
             [os.path.join(BIN, "auto-yes"), "/bin/bash", "--norc", "--noprofile", "-i"])
 
-    def question(self, script):
+    def question(self, script, avant=None):
         t = Terminal([os.path.join(BIN, "auto-yes"), "/bin/bash", "-c", script])
         try:
+            if avant:
+                avant(t)
             return t.lire(10, b"RECU=")
         finally:
+            self.journal = self.lire_journal(t)
             t.fermer()
+
+    @staticmethod
+    def lire_journal(t):
+        chemin = os.path.join(t.maison, ".local", "state", "auto-yes", "journal.log")
+        if not os.path.exists(chemin):
+            return ""
+        with open(chemin, encoding="utf-8") as f:
+            return f.read()
 
     def test_menu_de_confirmation_recoit_1(self):
         sortie = self.question(
@@ -110,6 +122,45 @@ class EssaisAutoYes(unittest.TestCase):
         sortie = self.question(
             'sleep 0.5; printf "Do you want to proceed?\\n"; read -t 2 r; echo "RECU=[$r]"')
         self.assertIn("RECU=[]", sortie)
+
+    def test_menu_qui_defile_est_ignore(self):
+        # la question citée dans un texte qui continue de défiler n'est pas un menu qui attend
+        sortie = self.question(
+            'sleep 0.5; printf "Do you want to proceed?\\n  1. Yes\\n"; '
+            'for i in $(seq 20); do echo ligne $i; sleep 0.05; done; read -t 2 r; echo "RECU=[$r]"')
+        self.assertIn("RECU=[]", sortie)
+        self.assertIn("ignoré:défilement", self.journal)
+
+    def test_reponse_notee_au_journal(self):
+        self.question('sleep 0.5; printf "Do you want to proceed?\\n  1. Yes\\n"; read r; echo "RECU=$r"')
+        ligne = self.journal.strip().splitlines()[-1].split("\t")
+        self.assertEqual(ligne[1], "réponse")
+        self.assertEqual(ligne[2], "bash")
+        self.assertTrue(ligne[3].endswith("1."), ligne[3])
+
+    def test_pause_puis_reprise(self):
+        def pause(t):
+            dossier = os.path.join(t.maison, ".local", "state", "auto-yes")
+            os.makedirs(dossier, exist_ok=True)
+            open(os.path.join(dossier, "pause"), "w").close()
+        sortie = self.question(
+            'sleep 0.5; printf "Do you want to proceed?\\n  1. Yes\\n"; read -t 2 r; echo "RECU=[$r]"',
+            avant=pause)
+        self.assertIn("RECU=[]", sortie)
+        self.assertIn("ignoré:pause", self.journal)
+
+    def test_commandes_de_gestion(self):
+        with tempfile.TemporaryDirectory() as etat:
+            env = dict(os.environ, AUTO_YES_ETAT=etat, AUTO_YES_JOURNAL="")
+            def lancer(*args):
+                return subprocess.run([os.path.join(BIN, "auto-yes"), *args], env=env,
+                                      capture_output=True, text=True, timeout=20).stdout
+            self.assertIn("actif", lancer("--etat"))
+            lancer("--pause")
+            self.assertTrue(os.path.exists(os.path.join(etat, "pause")))
+            self.assertIn("en pause", lancer("--etat"))
+            lancer("--reprise")
+            self.assertFalse(os.path.exists(os.path.join(etat, "pause")))
 
 
 if __name__ == "__main__":

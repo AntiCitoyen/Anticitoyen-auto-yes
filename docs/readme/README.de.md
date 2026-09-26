@@ -47,8 +47,12 @@ In einem Linux-Terminal beobachtet **auto-yes**, was Programme anzeigen, und tip
 | `auto-yes <befehl> [argumente…]` | startet **einen** Befehl und beantwortet dessen Bestätigungsabfragen |
 | `auto-yes-shell` | ersetzt die Login-Shell: **alle** in diesem Terminal getippten Befehle profitieren davon, ohne Präfix |
 | `auto-yes-configurer-gnome-terminal` | verbindet `auto-yes-shell` mit dem GNOME-Terminal-Standardprofil (`--revert`, um es rückgängig zu machen) |
+| `auto-yes --pause` / `--reprise` | setzt das automatische Antworten in **allen** Terminals aus / stellt es wieder her, auch in bereits geöffneten |
+| `auto-yes --etat` / `--journal [N]` | aktueller Status; die letzten N protokollierten Antworten |
 
 - **Terminal bleibt unangetastet**: `spawn` + `interact` von Expect; alles, was Sie tippen, wird durchgereicht, nur das Muster löst einen Versand aus.
+- **Ruhiger Bildschirm**: die Antwort wird nur gesendet, wenn 300 ms nach dem Menü nichts angezeigt wird; eine in durchlaufendem Text zitierte Frage wird ignoriert.
+- **Protokoll**: jedes erkannte Muster wird protokolliert (Datum, Antwort oder Grund der Enthaltung, Programm im Vordergrund, Text) in `~/.local/state/auto-yes/journal.log`.
 - **Größenänderung weitergeleitet**: wenn sich die Fenstergröße ändert, wissen Shell und Programme davon (Verlaufsbearbeitung, `less`, `vim`, `htop` bleiben korrekt).
 - **Muster änderbar ohne Neuinstallation**: `/etc/auto-yes/patterns.conf`, bei jedem neuen Terminal neu eingelesen.
 - **Keine doppelte Umhüllung**: ein bereits unter auto-yes laufendes Terminal, das ein weiteres startet, umhüllt sich nicht zweimal (`AUTO_YES_ACTIVE`).
@@ -65,7 +69,11 @@ Laden Sie das `.deb` von der [neuesten Release](https://github.com/AntiCitoyen/A
 sudo apt install ./auto-yes_*_all.deb
 ```
 
-Einzige Abhängigkeit: `expect` (≥ 5.45).
+Abhängigkeiten: `expect` (≥ 5.45) und `procps`.
+
+### Fedora, openSUSE… (RPM) und Arch Linux
+
+Dieselbe Release stellt `auto-yes-<version>-1.noarch.rpm` (`sudo dnf install ./auto-yes-*.noarch.rpm`), das `.src.rpm`, das Arch-Paket (`sudo pacman -U auto-yes-*.pkg.tar.zst`) sowie die AUR-Dateien (`aur-<version>.tar.gz`: `PKGBUILD` und `.SRCINFO`) bereit.
 
 ### Aus dem Quellcode
 
@@ -127,12 +135,23 @@ Es erfordert die Frage **und**, in der folgenden Zeile, die Auswahl `1.` eines n
 | `(?i)` am Anfang, um Groß-/Kleinschreibung zu ignorieren | Programme variieren zwischen „Proceed" / „proceed" |
 | Testen mit `AUTO_YES_PATTERNS=datei auto-yes …` | die Variable ersetzt `/etc/auto-yes/patterns.conf` für einen Test |
 
+### Umgebungsvariablen
+
+| Variable | Rolle | Standard |
+|---|---|---|
+| `AUTO_YES_PATTERNS` | Musterdatei | `/etc/auto-yes/patterns.conf` |
+| `AUTO_YES_CALME` | erforderliche Stille nach dem Menü, in Millisekunden (`0`: sofortige Antwort) | `300` |
+| `AUTO_YES_JOURNAL` | Protokolldatei (leer: nichts wird protokolliert) | `~/.local/state/auto-yes/journal.log` |
+| `AUTO_YES_ETAT` | Statusverzeichnis (Pause-Flag) | `~/.local/state/auto-yes` |
+
+Vollständige Hilfe: `man auto-yes`.
+
 <a id="fonctionnement"></a>
 
 ## So funktioniert es
 
 1. `auto-yes-shell` liest die Muster, setzt `AUTO_YES_ACTIVE=1`, startet dann `$SHELL -l` in einem Pseudo-Terminal (`spawn -noecho`).
-2. `interact -o -nobuffer -re <muster> { send "1\r" }` kopiert alles zwischen Ihrem Terminal und der Shell; wenn die Ausgabe des Programms einem Muster entspricht, sendet Expect `1` und Enter.
+2. `interact -o -nobuffer -re <muster>` kopiert alles zwischen Ihrem Terminal und der Shell; wenn die Ausgabe des Programms einem Muster entspricht, prüft auto-yes, dass die Pause nicht aktiv ist und der Bildschirm `AUTO_YES_CALME` ms ruhig geblieben ist, sendet dann `1` und Enter und protokolliert alles.
 3. Ein `trap … WINCH` kopiert die Fenstergröße (`stty rows/columns`) auf das Pseudo-Terminal der Shell und sendet ihr `SIGWINCH`.
 
 <a id="depannage"></a>
@@ -142,10 +161,11 @@ Es erfordert die Frage **und**, in der folgenden Zeile, die Auswahl `1.` eines n
 | Symptom | Ursache und Abhilfe |
 |---|---|
 | Beim Bearbeiten eines mit ↑/↓ abgerufenen Befehls verschiebt sich die Zeile oder verschwindet | Versionen ≤ 1.1: die Fenstergröße wurde nicht weitergeleitet, bash blieb bei 80 Spalten. Behoben in 1.2; öffnen Sie nach dem Update ein neues Terminal. `stty size` sollte die tatsächliche Größe anzeigen. |
-| Eine „1" erscheint, obwohl niemand danach gefragt hat | der angezeigte Text entspricht einem Muster (zum Beispiel ein Programm, das ein zitiertes Bestätigungsmenü anzeigt, oder der Code eines Musters selbst). Schränken Sie das Muster ein, oder starten Sie dieses Programm außerhalb von auto-yes (`AUTO_YES_ACTIVE=1 bash`). |
+| Eine „1" erscheint, obwohl niemand danach gefragt hat | der angezeigte Text entspricht einem Muster, und der Bildschirm blieb danach ruhig (Versionen ≤ 1.2: keine Wartezeit). `auto-yes --journal` zeigt, welches Programm und welcher Text; schränken Sie das Muster ein, erhöhen Sie `AUTO_YES_CALME`, oder nutzen Sie `auto-yes --pause` für die Dauer des Vorgangs. |
 | Nichts wird beantwortet | prüfen Sie das Muster mit `AUTO_YES_PATTERNS`; ein mit Cursor-Sequenzen gezeichnetes Menü (ohne echte Zeilenumbrüche) entspricht nicht `\n`. |
 | Das Terminal öffnet sich im Wurzelverzeichnis statt im aktuellen Ordner | Methode „GNOME-Terminal-Profil": wechseln Sie zur `~/.bashrc`-Methode. |
-| Für eine Sitzung deaktivieren | `AUTO_YES_ACTIVE=1 bash` öffnet eine Shell ohne auto-yes. |
+| Ein echtes Menü wird nicht bestätigt, obwohl es erkannt wird | das Programm zeigt weiterhin etwas an (Animation, Uhr): das Protokoll zeigt `ignoré:défilement`. Senken Sie `AUTO_YES_CALME` oder setzen Sie es für dieses Programm auf `0`. |
+| Überall vorübergehend deaktivieren | `auto-yes --pause` (danach `--reprise`); oder `AUTO_YES_ACTIVE=1 bash` für eine Shell ohne auto-yes. |
 
 <a id="depot"></a>
 
@@ -155,9 +175,11 @@ Es erfordert die Frage **und**, in der folgenden Zeile, die Auswahl `1.` eines n
 |---|---|
 | `bin/auto-yes`, `bin/auto-yes-shell` | Expect-Skripte |
 | `bin/auto-yes-configurer-gnome-terminal` | Anbindung an das GNOME-Terminal-Profil |
+| `share/auto-yes/commun.tcl` | gemeinsamer Code: Muster, ruhiger Bildschirm, Protokoll, Pause, Fenstergröße |
+| `man/` | Handbuchseite `auto-yes(1)` |
 | `etc/patterns.conf` | mitgelieferte Muster (`/etc/auto-yes/patterns.conf`, Konfigurationsdatei bleibt bei Updates erhalten) |
-| `packaging/` | `build-deb.sh`, `control`, `changelog`, `copyright`, Paketskripte |
-| `tests/test_auto_yes.py` | Tests im Pseudo-Terminal: Größenänderung, erkanntes Menü, isolierter Satz ignoriert |
+| `packaging/` | `install.sh` (gemeinsam), `build-deb.sh`, `control`, `changelog`, `copyright`, Paketskripte; `rpm/auto-yes.spec`, `aur/PKGBUILD` |
+| `tests/test_auto_yes.py` | Tests im Pseudo-Terminal: Größenänderung, erkanntes Menü, isolierter Satz und durchlaufender Text ignoriert, Protokoll, Pause |
 | `docs/readme/` | dieses README in 18 weiteren Sprachen |
 
 <a id="deb"></a>
@@ -169,7 +191,7 @@ python3 -m unittest discover -s tests -v   # Tests (expect erforderlich)
 packaging/build-deb.sh                     # → dist/auto-yes_<version>_all.deb
 ```
 
-Die Version stammt aus der ersten Zeile von `packaging/changelog`.
+Die Version stammt aus der ersten Zeile von `packaging/changelog`. Bei jeder veröffentlichten Release erstellt und fügt `.github/workflows/release.yml` die RPM- und Arch-Pakete sowie die AUR-Dateien hinzu.
 
 <a id="licence"></a>
 

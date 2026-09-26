@@ -1,51 +1,27 @@
 #!/usr/bin/expect -f
 # auto-yes : lance une commande et répond automatiquement "1" (Oui) à chaque
-# prompt qui correspond à un motif de /etc/auto-yes/patterns.conf (par défaut :
-# "Do you want to proceed?"). Terminal pleinement interactif (Ctrl-C, taille de
-# fenêtre, ce que vous tapez : tout est transmis, seul le motif déclenche un envoi).
+# menu de confirmation qui correspond à un motif de /etc/auto-yes/patterns.conf.
+# Terminal pleinement interactif (Ctrl-C, taille de fenêtre, ce que vous tapez :
+# tout est transmis, seul le motif déclenche un envoi).
 #
-#   auto-yes <commande> [arguments...]
-#   exemple : auto-yes apt install paquet
+#   auto-yes <commande> [arguments...]    exemple : auto-yes apt install paquet
+#   auto-yes --pause | --reprise          suspend / reprend les réponses dans tous les terminaux
+#   auto-yes --etat | --journal [N]       état, N dernières lignes du journal
 
-if {$argc < 1} {
+source [file join [file dirname [file dirname [file normalize [info script]]]] share auto-yes commun.tcl]
+
+if {$argc < 1 || [lindex $argv 0] in {-h --help --aide}} {
     send_user "usage : auto-yes <commande> \[arguments...\]\n"
+    send_user "        auto-yes --pause | --reprise | --etat | --journal \[N\]\n"
     send_user "répond automatiquement \"1\" (Oui) quand un motif de /etc/auto-yes/patterns.conf apparaît\n"
-    exit 1
+    exit [expr {$argc < 1}]
 }
+if {[auto_yes::gerer $argv]} { exit 0 }
 
-set patterns_file "/etc/auto-yes/patterns.conf"
-if {[info exists ::env(AUTO_YES_PATTERNS)]} { set patterns_file $::env(AUTO_YES_PATTERNS) }
-set patterns {}
-if {[file exists $patterns_file]} {
-    set f [open $patterns_file r]
-    while {[gets $f ligne] >= 0} {
-        set ligne [string trim $ligne]
-        if {$ligne eq "" || [string index $ligne 0] eq "#"} { continue }
-        lappend patterns $ligne
-    }
-    close $f
-}
-if {[llength $patterns] == 0} {
-    lappend patterns {(?i)do you want to proceed\??[^\n]*\n\s*1\.}
-}
-
-set actions {}
-foreach p $patterns {
-    lappend actions -o -nobuffer -re $p { send -- "1\r" }
-}
-
+set actions [auto_yes::actions]
 log_user 1
 set timeout -1
 spawn -noecho {*}$argv
-
-# Relaie les redimensionnements de la fenêtre au programme lancé (sans quoi il
-# garde la taille du démarrage et l'édition des longues lignes se décale).
-trap {
-    set taille [stty size]
-    stty rows [lindex $taille 0] columns [lindex $taille 1] < $spawn_out(slave,name)
-    catch {exec kill -WINCH [exp_pid]}
-} WINCH
-
-eval interact $actions
-
+auto_yes::apres_spawn
+interact {*}$actions
 catch wait

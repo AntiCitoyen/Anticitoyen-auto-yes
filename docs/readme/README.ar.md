@@ -47,8 +47,12 @@
 | `auto-yes <أمر> [وسائط…]` | يشغّل **أمراً واحداً** ويجيب على طلبات تأكيده |
 | `auto-yes-shell` | يستبدل صدفة تسجيل الدخول: **جميع** الأوامر المكتوبة في هذه الطرفية تستفيد منه، دون بادئة |
 | `auto-yes-configurer-gnome-terminal` | يربط `auto-yes-shell` بملف تعريف GNOME Terminal الافتراضي (`--revert` للتراجع) |
+| `auto-yes --pause` / `--reprise` | يعلّق / يستعيد الإجابة التلقائية في **جميع** الطرفيات، حتى المفتوحة بالفعل |
+| `auto-yes --etat` / `--journal [N]` | الحالة الحالية؛ آخر N إجابات مسجّلة |
 
 - **طرفية سليمة**: `spawn` + `interact` من Expect؛ كل ما تكتبونه يمر، والنمط وحده يُطلق إرسالاً.
+- **الشاشة الهادئة**: لا يُرسل الرد إلا إذا لم يظهر شيء خلال 300 مللي ثانية بعد القائمة؛ سؤال مقتبس داخل نص يتمرر يُتجاهل.
+- **السجل**: كل نمط تم التعرف عليه يُسجَّل (التاريخ، الرد أو سبب الامتناع، البرنامج في المقدمة، النص) في `~/.local/state/auto-yes/journal.log`.
 - **تغيير الحجم مُرحَّل**: عند تغيير حجم النافذة، تعلم الصدفة والبرامج بذلك (تحرير السجل، `less`، `vim`، `htop` تبقى صحيحة).
 - **أنماط قابلة للتعديل دون إعادة تثبيت**: `/etc/auto-yes/patterns.conf`، تُقرأ من جديد مع كل طرفية جديدة.
 - **لا تغليف مزدوج**: طرفية تعمل بالفعل تحت auto-yes وتعيد تشغيل طرفية أخرى لا تُغلَّف مرتين (`AUTO_YES_ACTIVE`).
@@ -65,7 +69,11 @@
 sudo apt install ./auto-yes_*_all.deb
 ```
 
-الاعتماد الوحيد: `expect` (≥ 5.45).
+الاعتمادات: `expect` (≥ 5.45) و`procps`.
+
+### Fedora، openSUSE… (RPM) وArch Linux
+
+يوفّر الإصدار نفسه `auto-yes-<version>-1.noarch.rpm` (`sudo dnf install ./auto-yes-*.noarch.rpm`)، وملف `.src.rpm`، وحزمة Arch (`sudo pacman -U auto-yes-*.pkg.tar.zst`)، وملفات AUR (`aur-<version>.tar.gz`: `PKGBUILD` و`.SRCINFO`).
 
 ### من المصدر
 
@@ -127,12 +135,23 @@ auto-yes-configurer-gnome-terminal --revert  # التراجع
 | `(?i)` في البداية لتجاهل حالة الأحرف | البرامج تتنوع بين «Proceed» / «proceed» |
 | اختبروا بـ `AUTO_YES_PATTERNS=ملف auto-yes …` | المتغير يستبدل `/etc/auto-yes/patterns.conf` من أجل تجربة |
 
+### متغيرات البيئة
+
+| المتغيّر | الدور | الافتراضي |
+|---|---|---|
+| `AUTO_YES_PATTERNS` | ملف الأنماط | `/etc/auto-yes/patterns.conf` |
+| `AUTO_YES_CALME` | الصمت المطلوب بعد القائمة، بالمللي ثانية (`0`: رد فوري) | `300` |
+| `AUTO_YES_JOURNAL` | ملف السجل (فارغ: لا يُسجَّل شيء) | `~/.local/state/auto-yes/journal.log` |
+| `AUTO_YES_ETAT` | مجلد الحالة (علامة الإيقاف المؤقت) | `~/.local/state/auto-yes` |
+
+المساعدة الكاملة: `man auto-yes`.
+
 <a id="fonctionnement"></a>
 
 ## كيف يعمل
 
 1. يقرأ `auto-yes-shell` الأنماط، يضبط `AUTO_YES_ACTIVE=1`، ثم يشغّل `$SHELL -l` في طرفية زائفة (`spawn -noecho`).
-2. `interact -o -nobuffer -re <نمط> { send "1\r" }` ينسخ كل شيء بين طرفيتكم والصدفة؛ عندما يطابق خرج البرنامج نمطاً، يرسل Expect `1` ثم Enter.
+2. `interact -o -nobuffer -re <نمط>` ينسخ كل شيء بين طرفيتكم والصدفة؛ عندما يطابق خرج البرنامج نمطاً، يتحقق auto-yes من أن الإيقاف المؤقت غير مفعّل وأن الشاشة ظلت هادئة لمدة `AUTO_YES_CALME` مللي ثانية، ثم يرسل `1` وEnter، ويسجّل كل ذلك في السجل.
 3. `trap … WINCH` ينسخ حجم النافذة (`stty rows/columns`) إلى الطرفية الزائفة للصدفة ويرسل لها `SIGWINCH`.
 
 <a id="depannage"></a>
@@ -142,10 +161,11 @@ auto-yes-configurer-gnome-terminal --revert  # التراجع
 | العرض | السبب والحل |
 |---|---|
 | عند تحرير أمر تم استدعاؤه بـ ↑/↓، ينزاح السطر أو يختفي | الإصدارات ≤ 1.1: لم يكن حجم النافذة يُرحَّل، وكانت bash تبقى عند 80 عموداً. أُصلح في 1.2؛ افتحوا طرفية جديدة بعد التحديث. يجب أن يُظهر `stty size` الحجم الحقيقي. |
-| يظهر «1» دون أن يطلبه أحد | النص المعروض يطابق نمطاً (مثلاً برنامج يعرض قائمة تأكيد مقتبسة، أو شفرة نمط بحد ذاته). ضيّقوا النمط، أو شغّلوا هذا البرنامج خارج auto-yes (`AUTO_YES_ACTIVE=1 bash`). |
+| يظهر «1» دون أن يطلبه أحد | النص المعروض يطابق نمطاً وبقيت الشاشة هادئة بعد ذلك (الإصدارات ≤ 1.2: لم يكن هناك انتظار). يُظهر `auto-yes --journal` أي برنامج وأي نص؛ ضيّقوا النمط، أو زيدوا `AUTO_YES_CALME`، أو استخدموا `auto-yes --pause` طوال مدة العملية. |
 | لا يُجاب على شيء | تحققوا من النمط بـ `AUTO_YES_PATTERNS`؛ قائمة مرسومة بتسلسلات المؤشر (دون فواصل أسطر حقيقية) لا تطابق `\n`. |
 | تُفتح الطرفية في الجذر بدلاً من المجلد الحالي | طريقة «ملف تعريف GNOME Terminal»: انتقلوا إلى طريقة `~/.bashrc`. |
-| التعطيل لجلسة واحدة | `AUTO_YES_ACTIVE=1 bash` يفتح صدفة دون auto-yes. |
+| قائمة حقيقية لا يتم تأكيدها رغم التعرف عليها | البرنامج يستمر في العرض (رسم متحرك، ساعة): يُظهر السجل `ignoré:défilement`. خفّضوا `AUTO_YES_CALME` أو اجعلوه `0` لهذا البرنامج. |
+| تعطيله في كل مكان لفترة | `auto-yes --pause` (ثم `--reprise`)؛ أو `AUTO_YES_ACTIVE=1 bash` لصدفة بدون auto-yes. |
 
 <a id="depot"></a>
 
@@ -155,9 +175,11 @@ auto-yes-configurer-gnome-terminal --revert  # التراجع
 |---|---|
 | `bin/auto-yes`، `bin/auto-yes-shell` | سكربتات Expect |
 | `bin/auto-yes-configurer-gnome-terminal` | الربط بملف تعريف GNOME Terminal |
+| `share/auto-yes/commun.tcl` | الشيفرة المشتركة: الأنماط، الشاشة الهادئة، السجل، الإيقاف المؤقت، حجم النافذة |
+| `man/` | صفحة الدليل `auto-yes(1)` |
 | `etc/patterns.conf` | الأنماط المرفقة (`/etc/auto-yes/patterns.conf`، ملف إعداد يُحفظ عبر التحديثات) |
-| `packaging/` | `build-deb.sh`، `control`، `changelog`، `copyright`، سكربتات الحزمة |
-| `tests/test_auto_yes.py` | اختبارات في طرفية زائفة: تغيير الحجم، قائمة معروفة، تجاهل جملة معزولة |
+| `packaging/` | `install.sh` (مشترك)، `build-deb.sh`، `control`، `changelog`، `copyright`، سكربتات الحزمة؛ `rpm/auto-yes.spec`، `aur/PKGBUILD` |
+| `tests/test_auto_yes.py` | اختبارات في طرفية زائفة: تغيير الحجم، قائمة معروفة، تجاهل جملة معزولة ونص متحرك، السجل، الإيقاف المؤقت |
 | `docs/readme/` | هذا الملف بـ 18 لغة أخرى |
 
 <a id="deb"></a>
@@ -169,7 +191,7 @@ python3 -m unittest discover -s tests -v   # اختبارات (يتطلب expect
 packaging/build-deb.sh                     # → dist/auto-yes_<إصدار>_all.deb
 ```
 
-يأتي الإصدار من السطر الأول في `packaging/changelog`.
+يأتي الإصدار من السطر الأول في `packaging/changelog`. مع كل إصدار (release) يُنشر، يقوم `.github/workflows/release.yml` ببناء وإرفاق حزم RPM وArch وملفات AUR.
 
 <a id="licence"></a>
 

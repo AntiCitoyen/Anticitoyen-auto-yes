@@ -1,0 +1,99 @@
+.TH AUTO-YES 1 "2026-09-26" "auto-yes 1.3" "Commandes utilisateur"
+.SH NOM
+auto-yes, auto-yes-shell, auto-yes-configurer-gnome-terminal \- répondre « 1 » tout seul aux menus de confirmation
+.SH SYNOPSIS
+.B auto-yes
+.I commande
+.RI [ arguments ...]
+.br
+.B auto-yes
+.BR \-\-pause " | " \-\-reprise " | " \-\-etat " | " \-\-journal
+.RI [ N ]
+.br
+.B auto-yes-shell
+.br
+.B auto-yes-configurer-gnome-terminal
+.RB [ \-\-revert ]
+.SH DESCRIPTION
+.B auto-yes
+lance
+.I commande
+dans un pseudo-terminal et recopie tout entre elle et votre terminal. Quand la
+sortie du programme correspond à un motif de
+.IR /etc/auto-yes/patterns.conf ,
+il envoie « 1 » puis Entrée. Frappe, Ctrl-C, redimensionnement de la fenêtre et
+couleurs passent comme d'habitude.
+.PP
+.B auto-yes-shell
+fait de même pour tout un terminal : il lance le shell de connexion
+.RB ( $SHELL " -l)"
+et s'applique à toutes les commandes tapées. Un terminal déjà sous auto-yes ne
+s'emballe pas deux fois
+.RB ( AUTO_YES_ACTIVE ).
+.PP
+.B auto-yes-configurer-gnome-terminal
+branche auto-yes-shell sur le profil GNOME Terminal par défaut ;
+.B \-\-revert
+remet la commande précédente. À lancer en tant que soi-même, jamais avec sudo.
+.PP
+Avant de répondre, auto-yes attend que l'écran reste calme
+.RB ( AUTO_YES_CALME ,
+300 ms par défaut) : une question citée dans un texte qui continue de défiler
+n'est pas un menu qui attend une réponse, elle est ignorée.
+.SH OPTIONS
+.TP
+.B \-\-pause
+suspend les réponses dans tous les terminaux, y compris ceux déjà ouverts.
+.TP
+.B \-\-reprise
+les rétablit.
+.TP
+.B \-\-etat
+affiche « actif » ou « en pause » et le chemin du journal.
+.TP
+.BR \-\-journal " [" \fIN\fR ]
+affiche les
+.I N
+dernières lignes du journal (20 par défaut).
+.SH JOURNAL
+Chaque motif reconnu ajoute une ligne, champs séparés par des tabulations :
+date, issue
+.RB ( réponse ", " ignoré:défilement ", " ignoré:pause ),
+programme au premier plan, texte reconnu (160 caractères au plus).
+.SH ENVIRONNEMENT
+.TP
+.B AUTO_YES_PATTERNS
+fichier de motifs à la place de /etc/auto-yes/patterns.conf.
+.TP
+.B AUTO_YES_CALME
+silence exigé après le menu, en millisecondes ; 0 répond aussitôt.
+.TP
+.B AUTO_YES_JOURNAL
+fichier journal ; vide pour ne rien noter.
+.TP
+.B AUTO_YES_ETAT
+dossier d'état (drapeau de pause).
+.SH FICHIERS
+.TP
+.I /etc/auto-yes/patterns.conf
+une expression régulière Tcl par ligne ; lignes vides et commentaires (#) ignorés ; relu à chaque terminal.
+.TP
+.I ~/.local/state/auto-yes/journal.log
+journal (ou $XDG_STATE_HOME/auto-yes/).
+.TP
+.I ~/.local/state/auto-yes/pause
+présent : auto-yes est en pause.
+.SH AVERTISSEMENT
+auto-yes confirme toute demande qui correspond à un motif, y compris celles
+d'une commande destructrice. Gardez des motifs étroits.
+.SH EXEMPLES
+.nf
+auto-yes apt install paquet
+auto-yes \-\-pause
+auto-yes \-\-journal 50
+AUTO_YES_CALME=0 auto-yes ./script.sh
+.fi
+.SH VOIR AUSSI
+.BR expect (1)
+.PP
+https://github.com/AntiCitoyen/Anticitoyen-auto-yes

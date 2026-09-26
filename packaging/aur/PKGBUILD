@@ -1,0 +1,18 @@
+# Maintainer: AntiCitoyen <anticitoyen@users.noreply.gitlab.com>
+pkgname=auto-yes
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc='Automatically answers "1" (Yes) to "Do you want to proceed?" prompts in a terminal'
+arch=('any')
+url="https://github.com/AntiCitoyen/Anticitoyen-auto-yes"
+license=('MIT')
+depends=('expect' 'procps-ng' 'bash')
+optdepends=('gnome-terminal: auto-yes-configurer-gnome-terminal')
+backup=('etc/auto-yes/patterns.conf')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+package() {
+    cd "Anticitoyen-auto-yes-$pkgver"
+    packaging/install.sh "$pkgdir"
+}

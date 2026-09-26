@@ -47,8 +47,12 @@ In een Linux-terminal houdt **auto-yes** in de gaten wat programma's weergeven e
 | `auto-yes <commando> [argumenten…]` | start **één** commando en beantwoordt de bevestigingsvragen ervan |
 | `auto-yes-shell` | vervangt de login-shell: **alle** commando's die in deze terminal worden getypt, profiteren ervan, zonder voorvoegsel |
 | `auto-yes-configurer-gnome-terminal` | koppelt `auto-yes-shell` aan het standaardprofiel van GNOME Terminal (`--revert` om terug te draaien) |
+| `auto-yes --pause` / `--reprise` | schorst / herstelt het automatisch beantwoorden in **alle** terminals, ook reeds geopende |
+| `auto-yes --etat` / `--journal [N]` | huidige status; laatste N genoteerde antwoorden |
 
 - **Terminal blijft intact**: `spawn` + `interact` van Expect; alles wat u typt gaat door, alleen het patroon activeert een verzending.
+- **Rustig scherm**: het antwoord wordt alleen verstuurd als er 300 ms na het menu niets wordt weergegeven; een vraag die geciteerd wordt in doorlopende tekst wordt genegeerd.
+- **Logboek**: elk herkend patroon wordt genoteerd (datum, antwoord of reden van onthouding, programma op de voorgrond, tekst) in `~/.local/state/auto-yes/journal.log`.
 - **Formaatwijziging doorgegeven**: wanneer het venster van formaat verandert, weten de shell en de programma's dit (geschiedenis bewerken, `less`, `vim`, `htop` blijven correct).
 - **Patronen aanpasbaar zonder herinstallatie**: `/etc/auto-yes/patterns.conf`, opnieuw ingelezen bij elke nieuwe terminal.
 - **Geen dubbele inwikkeling**: een terminal die al onder auto-yes draait en er nog een start, wikkelt zichzelf niet twee keer in (`AUTO_YES_ACTIVE`).
@@ -65,7 +69,11 @@ Download de `.deb` van de [laatste release](https://github.com/AntiCitoyen/Antic
 sudo apt install ./auto-yes_*_all.deb
 ```
 
-Enige afhankelijkheid: `expect` (≥ 5.45).
+Afhankelijkheden: `expect` (≥ 5.45) en `procps`.
+
+### Fedora, openSUSE… (RPM) en Arch Linux
+
+Dezelfde release levert `auto-yes-<versie>-1.noarch.rpm` (`sudo dnf install ./auto-yes-*.noarch.rpm`), de `.src.rpm`, het Arch-pakket (`sudo pacman -U auto-yes-*.pkg.tar.zst`) en de AUR-bestanden (`aur-<versie>.tar.gz`: `PKGBUILD` en `.SRCINFO`).
 
 ### Vanuit de broncode
 
@@ -127,12 +135,23 @@ Het vereist de vraag **en**, op de volgende regel, de keuze `1.` van een genumme
 | `(?i)` aan het begin om hoofdletters te negeren | programma's variëren tussen "Proceed" / "proceed" |
 | Testen met `AUTO_YES_PATTERNS=bestand auto-yes …` | de variabele vervangt `/etc/auto-yes/patterns.conf` voor een test |
 
+### Omgevingsvariabelen
+
+| Variabele | Rol | Standaard |
+|---|---|---|
+| `AUTO_YES_PATTERNS` | patronenbestand | `/etc/auto-yes/patterns.conf` |
+| `AUTO_YES_CALME` | vereiste stilte na het menu, in milliseconden (`0`: onmiddellijk antwoord) | `300` |
+| `AUTO_YES_JOURNAL` | logboekbestand (leeg: er wordt niets genoteerd) | `~/.local/state/auto-yes/journal.log` |
+| `AUTO_YES_ETAT` | statusmap (pauzevlag) | `~/.local/state/auto-yes` |
+
+Volledige hulp: `man auto-yes`.
+
 <a id="fonctionnement"></a>
 
 ## Hoe het werkt
 
 1. `auto-yes-shell` leest de patronen, stelt `AUTO_YES_ACTIVE=1` in, en start dan `$SHELL -l` in een pseudoterminal (`spawn -noecho`).
-2. `interact -o -nobuffer -re <patroon> { send "1\r" }` kopieert alles tussen uw terminal en de shell; wanneer de uitvoer van het programma overeenkomt met een patroon, stuurt Expect `1` en Enter.
+2. `interact -o -nobuffer -re <patroon>` kopieert alles tussen uw terminal en de shell; wanneer de uitvoer van het programma overeenkomt met een patroon, controleert auto-yes of de pauze niet actief is en of het scherm `AUTO_YES_CALME` ms rustig is gebleven, stuurt dan `1` en Enter, en noteert alles in het logboek.
 3. Een `trap … WINCH` kopieert de venstergrootte (`stty rows/columns`) naar de pseudoterminal van de shell en stuurt hem `SIGWINCH`.
 
 <a id="depannage"></a>
@@ -142,10 +161,11 @@ Het vereist de vraag **en**, op de volgende regel, de keuze `1.` van een genumme
 | Symptoom | Oorzaak en oplossing |
 |---|---|
 | Bij het bewerken van een met ↑/↓ opgeroepen commando verschuift of verdwijnt de regel | versies ≤ 1.1: de venstergrootte werd niet doorgegeven, bash bleef op 80 kolommen. Opgelost in 1.2; open een nieuwe terminal na de update. `stty size` moet de werkelijke grootte tonen. |
-| Er verschijnt een "1" terwijl niemand erom heeft gevraagd | de weergegeven tekst komt overeen met een patroon (bijvoorbeeld een programma dat een geciteerd bevestigingsmenu toont, of de code van een patroon zelf). Vernauw het patroon, of start dat programma buiten auto-yes (`AUTO_YES_ACTIVE=1 bash`). |
+| Er verschijnt een "1" terwijl niemand erom heeft gevraagd | de weergegeven tekst komt overeen met een patroon en het scherm is daarna rustig gebleven (versies ≤ 1.2: geen wachttijd). `auto-yes --journal` toont welk programma en welke tekst; vernauw het patroon, verhoog `AUTO_YES_CALME`, of gebruik `auto-yes --pause` voor de duur van de bewerking. |
 | Er wordt niets beantwoord | controleer het patroon met `AUTO_YES_PATTERNS`; een menu getekend met cursorreeksen (zonder echte regeleinden) komt niet overeen met `\n`. |
 | De terminal opent in de root in plaats van de huidige map | methode "GNOME Terminal-profiel": schakel over naar de `~/.bashrc`-methode. |
-| Voor één sessie uitschakelen | `AUTO_YES_ACTIVE=1 bash` opent een shell zonder auto-yes. |
+| Een echt menu wordt niet bevestigd terwijl het wel wordt herkend | het programma blijft iets weergeven (animatie, klok): het logboek vermeldt `ignoré:défilement`. Verlaag `AUTO_YES_CALME` of zet het op `0` voor dat programma. |
+| Overal tijdelijk uitschakelen | `auto-yes --pause` (daarna `--reprise`); of `AUTO_YES_ACTIVE=1 bash` voor een shell zonder auto-yes. |
 
 <a id="depot"></a>
 
@@ -155,9 +175,11 @@ Het vereist de vraag **en**, op de volgende regel, de keuze `1.` van een genumme
 |---|---|
 | `bin/auto-yes`, `bin/auto-yes-shell` | Expect-scripts |
 | `bin/auto-yes-configurer-gnome-terminal` | koppeling met het GNOME Terminal-profiel |
+| `share/auto-yes/commun.tcl` | gedeelde code: patronen, rustig scherm, logboek, pauze, venstergrootte |
+| `man/` | man-pagina `auto-yes(1)` |
 | `etc/patterns.conf` | meegeleverde patronen (`/etc/auto-yes/patterns.conf`, configuratiebestand blijft behouden bij updates) |
-| `packaging/` | `build-deb.sh`, `control`, `changelog`, `copyright`, pakketscripts |
-| `tests/test_auto_yes.py` | tests in pseudoterminal: formaatwijziging, herkend menu, geïsoleerde zin genegeerd |
+| `packaging/` | `install.sh` (gedeeld), `build-deb.sh`, `control`, `changelog`, `copyright`, pakketscripts; `rpm/auto-yes.spec`, `aur/PKGBUILD` |
+| `tests/test_auto_yes.py` | tests in pseudoterminal: formaatwijziging, herkend menu, geïsoleerde zin en doorlopende tekst genegeerd, logboek, pauze |
 | `docs/readme/` | deze README in 18 andere talen |
 
 <a id="deb"></a>
@@ -169,7 +191,7 @@ python3 -m unittest discover -s tests -v   # tests (expect vereist)
 packaging/build-deb.sh                     # → dist/auto-yes_<versie>_all.deb
 ```
 
-De versie komt uit de eerste regel van `packaging/changelog`.
+De versie komt uit de eerste regel van `packaging/changelog`. Bij elke gepubliceerde release bouwt en voegt `.github/workflows/release.yml` de RPM- en Arch-pakketten en de AUR-bestanden toe.
 
 <a id="licence"></a>
 

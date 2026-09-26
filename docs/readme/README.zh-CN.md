@@ -47,8 +47,12 @@
 | `auto-yes <命令> [参数…]` | 启动**一个**命令并回答它的确认请求 |
 | `auto-yes-shell` | 替换登录 shell：在该终端中输入的**所有**命令都会受益，无需前缀 |
 | `auto-yes-configurer-gnome-terminal` | 将 `auto-yes-shell` 挂接到默认的 GNOME Terminal 配置文件上（`--revert` 可还原） |
+| `auto-yes --pause` / `--reprise` | 在**所有**终端（即使是已经打开的）中暂停 / 恢复自动应答 |
+| `auto-yes --etat` / `--journal [N]` | 当前状态；最近记录的 N 次应答 |
 
 - **终端保持原样**：使用 Expect 的 `spawn` + `interact`；您输入的一切都会正常传递，只有模式匹配时才会触发发送。
+- **静屏**：仅当菜单出现后 300 毫秒内没有新内容显示时才会发送应答；滚动文本中引用的问题会被忽略。
+- **日志**：每个被识别的模式都会被记录（日期、应答或弃权原因、前台程序、文本）到 `~/.local/state/auto-yes/journal.log`。
 - **窗口大小变化被中继**：当窗口改变大小时，shell 和程序都会知道（历史记录编辑、`less`、`vim`、`htop` 保持正确）。
 - **无需重新安装即可修改模式**：`/etc/auto-yes/patterns.conf`，每次打开新终端时重新读取。
 - **不会重复包装**：已在 auto-yes 下运行的终端再启动另一个终端时不会被二次包装（`AUTO_YES_ACTIVE`）。
@@ -65,7 +69,11 @@
 sudo apt install ./auto-yes_*_all.deb
 ```
 
-唯一依赖：`expect`（≥ 5.45）。
+依赖：`expect`（≥ 5.45）和 `procps`。
+
+### Fedora、openSUSE…（RPM）和 Arch Linux
+
+该版本同样提供 `auto-yes-<version>-1.noarch.rpm`（`sudo dnf install ./auto-yes-*.noarch.rpm`）、`.src.rpm`、Arch 软件包（`sudo pacman -U auto-yes-*.pkg.tar.zst`）以及 AUR 文件（`aur-<version>.tar.gz`：`PKGBUILD` 和 `.SRCINFO`）。
 
 ### 从源码构建
 
@@ -127,12 +135,23 @@ auto-yes-configurer-gnome-terminal --revert  # 还原
 | 开头加 `(?i)` 以忽略大小写 | 程序在「Proceed」/「proceed」之间各不相同 |
 | 使用 `AUTO_YES_PATTERNS=文件 auto-yes …` 进行测试 | 该变量会在测试时替代 `/etc/auto-yes/patterns.conf` |
 
+### 环境变量
+
+| 变量 | 作用 | 默认值 |
+|---|---|---|
+| `AUTO_YES_PATTERNS` | 模式文件 | `/etc/auto-yes/patterns.conf` |
+| `AUTO_YES_CALME` | 菜单出现后需要保持安静的时间，以毫秒为单位（`0`：立即应答） | `300` |
+| `AUTO_YES_JOURNAL` | 日志文件（留空：不记录任何内容） | `~/.local/state/auto-yes/journal.log` |
+| `AUTO_YES_ETAT` | 状态目录（暂停标志） | `~/.local/state/auto-yes` |
+
+完整帮助：`man auto-yes`。
+
 <a id="fonctionnement"></a>
 
 ## 工作原理
 
 1. `auto-yes-shell` 读取模式，设置 `AUTO_YES_ACTIVE=1`，然后在伪终端中（`spawn -noecho`）启动 `$SHELL -l`。
-2. `interact -o -nobuffer -re <模式> { send "1\r" }` 会复制您的终端与 shell 之间的所有内容；当程序的输出匹配某个模式时，Expect 会发送 `1` 和回车。
+2. `interact -o -nobuffer -re <模式>` 会复制您的终端与 shell 之间的所有内容；当程序的输出匹配某个模式时，auto-yes 会检查暂停未启用且屏幕已保持安静 `AUTO_YES_CALME` 毫秒，然后发送 `1` 和回车，并将全部内容记录到日志中。
 3. `trap … WINCH` 会将窗口大小（`stty rows/columns`）复制到 shell 的伪终端，并向其发送 `SIGWINCH`。
 
 <a id="depannage"></a>
@@ -142,10 +161,11 @@ auto-yes-configurer-gnome-terminal --revert  # 还原
 | 症状 | 原因与解决方法 |
 |---|---|
 | 编辑通过 ↑/↓ 调出的命令时，行会错位或消失 | ≤ 1.1 版本：窗口大小未被中继，bash 一直停留在 80 列。已在 1.2 中修复；更新后请打开新终端。`stty size` 应显示实际大小。 |
-| 没有人请求却出现了「1」 | 显示的文本匹配了某个模式（例如某个程序显示了被引用的确认菜单，或某个模式自身的代码）。请收紧该模式，或在 auto-yes 之外运行该程序（`AUTO_YES_ACTIVE=1 bash`）。 |
+| 没有人请求却出现了「1」 | 显示的文本匹配了某个模式，并且此后屏幕保持了安静（≤ 1.2 版本：没有任何等待）。`auto-yes --journal` 会显示是哪个程序和哪段文本；请收紧该模式，增大 `AUTO_YES_CALME`，或在操作期间使用 `auto-yes --pause`。 |
 | 什么都没有得到回应 | 用 `AUTO_YES_PATTERNS` 检查模式；由光标序列绘制的菜单（没有真正的换行符）不会匹配 `\n`。 |
 | 终端在根目录而不是当前文件夹中打开 | 「GNOME Terminal 配置文件」方法：请改用 `~/.bashrc` 方法。 |
-| 为某个会话禁用 | `AUTO_YES_ACTIVE=1 bash` 会打开一个没有 auto-yes 的 shell。 |
+| 识别出真正的菜单却没有被确认 | 该程序仍在持续显示内容（动画、时钟）：日志会显示 `ignoré:défilement`。请降低 `AUTO_YES_CALME`，或针对该程序将其设为 `0`。 |
+| 随时在各处禁用 | `auto-yes --pause`（之后 `--reprise`）；或使用 `AUTO_YES_ACTIVE=1 bash` 打开一个没有 auto-yes 的 shell。 |
 
 <a id="depot"></a>
 
@@ -155,9 +175,11 @@ auto-yes-configurer-gnome-terminal --revert  # 还原
 |---|---|
 | `bin/auto-yes`、`bin/auto-yes-shell` | Expect 脚本 |
 | `bin/auto-yes-configurer-gnome-terminal` | 与 GNOME Terminal 配置文件的挂接 |
+| `share/auto-yes/commun.tcl` | 通用代码：模式、静屏、日志、暂停、窗口大小 |
+| `man/` | `auto-yes(1)` 手册页 |
 | `etc/patterns.conf` | 内置模式（`/etc/auto-yes/patterns.conf`，配置文件在更新时会被保留） |
-| `packaging/` | `build-deb.sh`、`control`、`changelog`、`copyright`、软件包脚本 |
-| `tests/test_auto_yes.py` | 伪终端测试：调整大小、识别菜单、忽略孤立句子 |
+| `packaging/` | `install.sh`（通用）、`build-deb.sh`、`control`、`changelog`、`copyright`、软件包脚本；`rpm/auto-yes.spec`、`aur/PKGBUILD` |
+| `tests/test_auto_yes.py` | 伪终端测试：调整大小、识别菜单、忽略孤立句子和滚动文本、日志、暂停 |
 | `docs/readme/` | 本 README 的另外 18 种语言版本 |
 
 <a id="deb"></a>
@@ -169,7 +191,7 @@ python3 -m unittest discover -s tests -v   # 测试（需要 expect）
 packaging/build-deb.sh                     # → dist/auto-yes_<版本>_all.deb
 ```
 
-版本号来自 `packaging/changelog` 的第一行。
+版本号来自 `packaging/changelog` 的第一行。每次发布新版本时，`.github/workflows/release.yml` 都会构建并附加 RPM、Arch 软件包和 AUR 文件。
 
 <a id="licence"></a>
 

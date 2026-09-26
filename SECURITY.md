@@ -32,6 +32,7 @@ In scope: everything in this repository, in particular:
 - how patterns are read from `/etc/auto-yes/patterns.conf` (and `AUTO_YES_PATTERNS`) and matched;
 - anything that makes auto-yes answer a prompt that no configured pattern matches, or send anything
   other than `1` + Enter;
+- the answer log and the pause flag (`~/.local/state/auto-yes/`), including what the log records;
 - the GNOME Terminal profile helper and the package maintainer scripts.
 
 Out of scope, by design: a configured pattern answering a prompt you did not expect (auto-yes
@@ -74,6 +75,8 @@ Dans le périmètre : tout ce dépôt, en particulier :
   correspondance ;
 - tout ce qui ferait répondre auto-yes à une demande qu'aucun motif configuré ne reconnaît, ou
   envoyer autre chose que `1` + Entrée ;
+- le journal des réponses et le drapeau de pause (`~/.local/state/auto-yes/`), y compris ce que le
+  journal enregistre ;
 - l'assistant de profil GNOME Terminal et les scripts du paquet.
 
 Hors périmètre, par conception : un motif configuré qui répond à une demande inattendue (auto-yes
